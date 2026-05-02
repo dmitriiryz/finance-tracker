@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="es">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-<title>Финансовый трекер</title>
+<title>Rastreador Financiero</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -108,71 +108,78 @@
 
 <!-- PAGES -->
 <div id="page-home" class="page active">
-  <div class="page-header">Обзор</div>
+  <div class="page-header">Resumen</div>
   <div class="metrics">
-    <div class="metric-card"><div class="metric-label">Доходы</div><div class="metric-val green" id="m-inc">0 ₽</div></div>
-    <div class="metric-card"><div class="metric-label">Расходы</div><div class="metric-val red" id="m-exp">0 ₽</div></div>
-    <div class="metric-card wide"><div class="metric-label">Баланс</div><div class="metric-val accent" id="m-bal">0 ₽</div></div>
+    <div class="metric-card"><div class="metric-label">Ingresos</div><div class="metric-val green" id="m-inc">$0</div></div>
+    <div class="metric-card"><div class="metric-label">Gastos</div><div class="metric-val red" id="m-exp">$0</div></div>
+    <div class="metric-card wide"><div class="metric-label">Balance</div><div class="metric-val accent" id="m-bal">$0</div></div>
   </div>
-  <div class="section-label">Последние операции</div>
-  <div class="tx-list" id="recent-list"><div class="empty">Нет транзакций</div></div>
+  <div class="section-label">Últimas operaciones</div>
+  <div class="tx-list" id="recent-list"><div class="empty">Sin transacciones</div></div>
 </div>
 
 <div id="page-add" class="page">
-  <div class="page-header">Добавить</div>
+  <div class="page-header">Agregar</div>
   <div class="add-card">
     <div class="type-row">
-      <button class="type-pill expense active" id="pill-expense" onclick="setType('expense')">— Расход</button>
-      <button class="type-pill income" id="pill-income" onclick="setType('income')">+ Доход</button>
+      <button class="type-pill expense active" id="pill-expense" onclick="setType('expense')">— Gasto</button>
+      <button class="type-pill income" id="pill-income" onclick="setType('income')">+ Ingreso</button>
     </div>
     <div class="form-row">
       <div class="form-field" style="flex:2">
-        <label>Описание</label>
-        <input id="f-desc" type="text" placeholder="Кофе, зарплата…" />
+        <label>Descripción</label>
+        <input id="f-desc" type="text" placeholder="Café, salario…" />
       </div>
       <div class="form-field">
-        <label>Сумма ₽</label>
-        <input id="f-amount" type="number" inputmode="decimal" placeholder="500" />
+        <label>Monto $</label>
+        <input id="f-amount" type="number" inputmode="decimal" placeholder="5000" />
       </div>
     </div>
     <div class="form-row">
       <div class="form-field">
-        <label>Категория</label>
+        <label>Categoría</label>
         <select id="f-cat">
-          <option value="🍔 Еда">🍔 Еда</option>
-          <option value="🚇 Транспорт">🚇 Транспорт</option>
-          <option value="🎬 Развлечения">🎬 Развлечения</option>
-          <option value="🏠 Коммунальные">🏠 Коммунальные</option>
-          <option value="👗 Одежда">👗 Одежда</option>
-          <option value="💊 Здоровье">💊 Здоровье</option>
-          <option value="💰 Зарплата">💰 Зарплата</option>
-          <option value="📦 Прочее">📦 Прочее</option>
+          <option value="🍔 Comida">🍔 Comida</option>
+          <option value="🍬 Dulces">🍬 Dulces</option>
+          <option value="🏠 Alquiler">🏠 Alquiler</option>
+          <option value="⚡ Servicios básicos">⚡ Servicios básicos</option>
+          <option value="💊 Salud y Belleza">💊 Salud y Belleza</option>
+          <option value="🚇 Transporte">🚇 Transporte</option>
+          <option value="📦 Artículos del hogar">📦 Artículos del hogar</option>
+          <option value="📚 Educación">📚 Educación</option>
+          <option value="👗 Ropa">👗 Ropa</option>
+          <option value="📱 Suscripciones">📱 Suscripciones</option>
+          <option value="🎬 Entretenimiento">🎬 Entretenimiento</option>
+          <option value="🍽️ Restaurantes">🍽️ Restaurantes</option>
+          <option value="📄 Impuestos">📄 Impuestos</option>
+          <option value="💰 Salario">💰 Salario</option>
+          <option value="📦 Otros">📦 Otros</option>
         </select>
       </div>
       <div class="form-field">
-        <label>Дата</label>
+        <label>Fecha</label>
         <input id="f-date" type="date" />
       </div>
     </div>
-    <button class="btn-submit" onclick="addTx()">Добавить</button>
+    <button class="btn-submit" onclick="addTx()">Agregar</button>
   </div>
 </div>
 
 <div id="page-budget" class="page">
-  <div class="page-header">Бюджет</div>
-  <div class="section-label" style="margin-bottom:14px">Лимиты на месяц</div>
+  <div class="page-header">Presupuesto</div>
+  <div class="section-label" style="margin-bottom:14px">Límites del mes</div>
   <div class="budget-list" id="budget-list"></div>
 </div>
 
 <div id="page-charts" class="page">
-  <div class="page-header">Графики</div>
+  <div class="page-header">Gráficos</div>
   <div class="chart-card">
-    <div class="chart-title">Расходы по категориям</div>
-    <div class="chart-wrap" style="height:240px"><canvas id="c-donut" role="img" aria-label="Расходы по категориям — кольцевая диаграмма"></canvas></div>
+    <div class="chart-title">Gastos por categoría</div>
+    <div class="chart-wrap" style="height:240px"><canvas id="c-donut" role="img" aria-label="Gastos por categoría — gráfico de anillos"></canvas></div>
   </div>
   <div class="chart-card">
-    <div class="chart-title">Доходы и расходы</div>
-    <div class="chart-wrap" style="height:200px"><canvas id="c-bar" role="img" aria-label="Доходы и расходы по месяцам"></canvas></div>
+    <div class="chart-title">Ingresos y gastos</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="c-bar" role="img" aria-label="Ingresos y gastos por meses"></canvas></div>
   </div>
 </div>
 
@@ -180,19 +187,19 @@
 <nav class="nav">
   <button class="nav-btn active" id="nav-home" onclick="switchPage('home')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    Обзор
+    Resumen
   </button>
   <button class="nav-btn" id="nav-add" onclick="switchPage('add')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-    Добавить
+    Agregar
   </button>
   <button class="nav-btn" id="nav-budget" onclick="switchPage('budget')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-    Бюджет
+    Presupuesto
   </button>
   <button class="nav-btn" id="nav-charts" onclick="switchPage('charts')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-    Графики
+    Gráficos
   </button>
 </nav>
 
@@ -204,12 +211,14 @@ if (tg) { tg.ready(); tg.expand(); }
 
 const STORAGE_KEY = 'fin_data_v1';
 let txType = 'expense';
-let transactions = [];
-let budgets = { '🍔 Еда': 15000, '🚇 Транспорт': 3000, '🎬 Развлечения': 5000, '🏠 Коммунальные': 6000, '👗 Одежда': 5000, '💊 Здоровье': 3000 };
-let nextId = 1;
+
+// Данные из AMOR.xlsx
+let transactions = [{"id": 34, "type": "expense", "desc": "Comida", "amount": 9000, "cat": "🍔 Comida", "date": "2026-03-04"}, {"id": 33, "type": "expense", "desc": "Comida", "amount": 41000, "cat": "🍔 Comida", "date": "2026-03-04"}, {"id": 32, "type": "expense", "desc": "Comida", "amount": 13000, "cat": "🍔 Comida", "date": "2026-02-27"}, {"id": 31, "type": "expense", "desc": "Comida", "amount": 24500, "cat": "🍔 Comida", "date": "2026-02-27"}, {"id": 30, "type": "expense", "desc": "Comida", "amount": 28000, "cat": "🍔 Comida", "date": "2026-02-27"}, {"id": 29, "type": "expense", "desc": "Artículos del hogar", "amount": 17300, "cat": "📦 Artículos del hogar", "date": "2026-02-23"}, {"id": 28, "type": "expense", "desc": "Comida", "amount": 2565, "cat": "🍔 Comida", "date": "2026-02-23"}, {"id": 27, "type": "expense", "desc": "Comida", "amount": 12318, "cat": "🍔 Comida", "date": "2026-02-23"}, {"id": 26, "type": "expense", "desc": "Transporte", "amount": 2618, "cat": "🚇 Transporte", "date": "2026-02-23"}, {"id": 25, "type": "expense", "desc": "Comida", "amount": 25455, "cat": "🍔 Comida", "date": "2026-02-23"}, {"id": 24, "type": "expense", "desc": "Dulces", "amount": 8000, "cat": "🍬 Dulces", "date": "2026-02-22"}, {"id": 23, "type": "expense", "desc": "Salud y Belleza", "amount": 11149, "cat": "💊 Salud y Belleza", "date": "2026-02-22"}, {"id": 22, "type": "expense", "desc": "Transporte", "amount": 4939, "cat": "🚇 Transporte", "date": "2026-02-22"}, {"id": 21, "type": "expense", "desc": "Salud y Belleza", "amount": 115000, "cat": "💊 Salud y Belleza", "date": "2026-02-22"}, {"id": 20, "type": "expense", "desc": "Transporte", "amount": 5339, "cat": "🚇 Transporte", "date": "2026-02-21"}, {"id": 19, "type": "expense", "desc": "Comida", "amount": 40000, "cat": "🍔 Comida", "date": "2026-02-21"}, {"id": 18, "type": "expense", "desc": "Comida", "amount": 9252, "cat": "🍔 Comida", "date": "2026-02-20"}, {"id": 17, "type": "expense", "desc": "Comida", "amount": 4987, "cat": "🍔 Comida", "date": "2026-02-20"}, {"id": 16, "type": "expense", "desc": "Comida", "amount": 13000, "cat": "🍔 Comida", "date": "2026-02-20"}, {"id": 15, "type": "expense", "desc": "Impuestos", "amount": 42396, "cat": "📄 Impuestos", "date": "2026-02-20"}];
+let budgets = {"🍬 Dulces": 269400, "🏠 Alquiler": 1263000, "⚡ Servicios básicos": 63000, "🍔 Comida": 1174954, "💊 Salud y Belleza": 411433, "🚇 Transporte": 85870, "📦 Artículos del hogar": 79200, "📚 Educación": 9000, "📦 Otros": 126000, "👗 Ropa": 21000, "📱 Suscripciones": 185469, "🎬 Entretenimiento": 270000, "🍽️ Restaurantes": 334650, "📄 Impuestos": 63594};
+let nextId = 35;
 let donutChart = null, barChart = null;
 
-const fmt = n => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');
 
 function showToast(msg) {
   const t = document.getElementById('toast');
@@ -232,13 +241,13 @@ function loadData(cb) {
   if (tg?.CloudStorage) {
     tg.CloudStorage.getItem(STORAGE_KEY, (err, val) => {
       if (!err && val) {
-        try { const d = JSON.parse(val); transactions = d.transactions || []; budgets = d.budgets || budgets; nextId = d.nextId || 1; } catch(e){}
+        try { const d = JSON.parse(val); transactions = d.transactions || transactions; budgets = d.budgets || budgets; nextId = d.nextId || nextId; } catch(e){}
       }
       cb();
     });
   } else {
     const val = localStorage.getItem(STORAGE_KEY);
-    if (val) { try { const d = JSON.parse(val); transactions = d.transactions || []; budgets = d.budgets || budgets; nextId = d.nextId || 1; } catch(e){} }
+    if (val) { try { const d = JSON.parse(val); transactions = d.transactions || transactions; budgets = d.budgets || budgets; nextId = d.nextId || nextId; } catch(e){} }
     cb();
   }
 }
@@ -259,7 +268,7 @@ function setType(t) {
   document.getElementById('pill-expense').classList.toggle('active', t === 'expense');
   document.getElementById('pill-income').classList.toggle('active', t === 'income');
   const sel = document.getElementById('f-cat');
-  sel.value = t === 'income' ? '💰 Зарплата' : '🍔 Еда';
+  sel.value = t === 'income' ? '💰 Salario' : '🍔 Comida';
 }
 
 // --- ADD ---
@@ -268,13 +277,13 @@ function addTx() {
   const amount = parseFloat(document.getElementById('f-amount').value);
   const cat = document.getElementById('f-cat').value;
   const date = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
-  if (!desc || !amount || amount <= 0) { showToast('Заполни описание и сумму'); return; }
+  if (!desc || !amount || amount <= 0) { showToast('Completa la descripción y el monto'); return; }
   transactions.unshift({ id: nextId++, type: txType, desc, amount, cat, date });
   document.getElementById('f-desc').value = '';
   document.getElementById('f-amount').value = '';
   saveData();
   render();
-  showToast(txType === 'expense' ? '— Расход добавлен' : '+ Доход добавлен');
+  showToast(txType === 'expense' ? '— Gasto agregado' : '+ Ingreso agregado');
   if (tg) tg.HapticFeedback?.notificationOccurred('success');
   switchPage('home');
 }
@@ -287,7 +296,7 @@ function delTx(id) {
 }
 
 // --- RENDER ---
-const catEmoji = { '🍔 Еда':'🍔','🚇 Транспорт':'🚇','🎬 Развлечения':'🎬','🏠 Коммунальные':'🏠','👗 Одежда':'👗','💊 Здоровье':'💊','💰 Зарплата':'💰','📦 Прочее':'📦' };
+const catEmoji = { '🍔 Comida':'🍔', '🍬 Dulces':'🍬', '🏠 Alquiler':'🏠', '⚡ Servicios básicos':'⚡', '💊 Salud y Belleza':'💊', '🚇 Transporte':'🚇', '📦 Artículos del hogar':'📦', '📚 Educación':'📚', '📦 Otros':'📦', '👗 Ropa':'👗', '📱 Suscripciones':'📱', '🎬 Entretenimiento':'🎬', '🍽️ Restaurantes':'🍽️', '📄 Impuestos':'📄', '💰 Salario':'💰' };
 
 function render() {
   const expenses = transactions.filter(t => t.type === 'expense');
@@ -304,7 +313,7 @@ function render() {
 
   const recent = transactions.slice(0, 8);
   const rl = document.getElementById('recent-list');
-  rl.innerHTML = recent.length ? recent.map(t => txHTML(t, true)).join('') : '<div class="empty">Нет транзакций</div>';
+  rl.innerHTML = recent.length ? recent.map(t => txHTML(t, true)).join('') : '<div class="empty">Sin transacciones</div>';
 
   renderBudget(expenses);
 }
@@ -337,7 +346,7 @@ function renderBudget(expenses) {
         <span class="budget-nums">${fmt(spent)} / ${fmt(budget)}</span>
       </div>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
-      <div class="budget-pct">${pct}% использовано</div>
+      <div class="budget-pct">${pct}% utilizado</div>
     </div>`;
   }).join('');
 }
@@ -359,7 +368,7 @@ function renderCharts() {
         tooltip: { callbacks: { label: i => i.label + ': ' + fmt(i.raw) } } } }
   });
 
-  const months = ['Янв','Фев','Мар','Апр','Май','Июн'];
+  const months = ['Ene','Feb','Mar','Abr','May','Jun'];
   const inc = transactions.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const exp = transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   const mockInc = [55000,62000,58000,70000,75000,inc||0];
@@ -369,8 +378,8 @@ function renderCharts() {
   barChart = new Chart(document.getElementById('c-bar'), {
     type: 'bar',
     data: { labels: months, datasets: [
-      { label: 'Доходы', data: mockInc, backgroundColor: 'rgba(46,204,143,.6)', borderRadius: 5, borderWidth: 0 },
-      { label: 'Расходы', data: mockExp, backgroundColor: 'rgba(255,92,92,.6)', borderRadius: 5, borderWidth: 0 }
+      { label: 'Ingresos', data: mockInc, backgroundColor: 'rgba(46,204,143,.6)', borderRadius: 5, borderWidth: 0 },
+      { label: 'Gastos', data: mockExp, backgroundColor: 'rgba(255,92,92,.6)', borderRadius: 5, borderWidth: 0 }
     ]},
     options: { responsive: true, maintainAspectRatio: false,
       plugins: { legend: { labels: { color: '#888899', font: { size: 11, family: 'Manrope' }, boxWidth: 10 } } },
