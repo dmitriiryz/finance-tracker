@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Финансовый трекер</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --bg2: #18181f;
+    --bg3: #22222c;
+    --border: rgba(255,255,255,0.07);
+    --text: #f0f0f5;
+    --muted: #888899;
+    --green: #2ecc8f;
+    --red: #ff5c5c;
+    --accent: #6c63ff;
+    --radius: 14px;
+    --font: 'Manrope', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  /* NAV */
+  .nav { display: flex; justify-content: space-around; padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg2); border-top: 1px solid var(--border); z-index: 100; }
+  .nav-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: none; color: var(--muted); font-size: 10px; font-family: var(--font); cursor: pointer; padding: 4px 16px; transition: color .2s; }
+  .nav-btn svg { width: 22px; height: 22px; }
+  .nav-btn.active { color: var(--accent); }
+
+  /* PAGES */
+  .page { display: none; padding: 16px 16px calc(80px + env(safe-area-inset-bottom)); }
+  .page.active { display: block; }
+
+  /* HEADER */
+  .page-header { font-size: 22px; font-weight: 700; margin-bottom: 18px; }
+
+  /* METRICS */
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .metric-card { background: var(--bg2); border-radius: var(--radius); padding: 14px; border: 1px solid var(--border); }
+  .metric-card.wide { grid-column: 1 / -1; }
+  .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+  .metric-val { font-size: 24px; font-weight: 700; }
+  .metric-val.green { color: var(--green); }
+  .metric-val.red { color: var(--red); }
+  .metric-val.accent { color: var(--accent); }
+
+  /* ADD FORM */
+  .add-card { background: var(--bg2); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); margin-bottom: 16px; }
+  .type-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .type-pill { flex: 1; padding: 9px; border-radius: 10px; border: 1px solid var(--border); background: none; color: var(--muted); font-size: 13px; font-family: var(--font); font-weight: 600; cursor: pointer; transition: all .2s; }
+  .type-pill.expense.active { background: rgba(255,92,92,.15); border-color: var(--red); color: var(--red); }
+  .type-pill.income.active { background: rgba(46,204,143,.15); border-color: var(--green); color: var(--green); }
+
+  .form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .form-field { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+  .form-field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .form-field input, .form-field select {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-family: var(--font); font-size: 14px;
+    padding: 10px 12px; outline: none; width: 100%;
+    -webkit-appearance: none; appearance: none;
+  }
+  .form-field input:focus, .form-field select:focus { border-color: var(--accent); }
+  .btn-submit { width: 100%; padding: 13px; border-radius: 12px; border: none; background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; margin-top: 4px; transition: opacity .2s; }
+  .btn-submit:active { opacity: .8; }
+
+  /* TX LIST */
+  .section-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+  .tx-list { display: flex; flex-direction: column; gap: 8px; }
+  .tx-item { display: flex; align-items: center; gap: 12px; background: var(--bg2); border-radius: 12px; padding: 12px 14px; border: 1px solid var(--border); }
+  .tx-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .tx-icon.expense { background: rgba(255,92,92,.12); }
+  .tx-icon.income { background: rgba(46,204,143,.12); }
+  .tx-info { flex: 1; min-width: 0; }
+  .tx-desc { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .tx-amount { font-size: 15px; font-weight: 700; flex-shrink: 0; }
+  .tx-amount.expense { color: var(--red); }
+  .tx-amount.income { color: var(--green); }
+  .tx-del { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 0 0 8px; flex-shrink: 0; line-height: 1; }
+  .tx-del:active { color: var(--red); }
+  .empty { text-align: center; color: var(--muted); font-size: 14px; padding: 32px 0; }
+
+  /* BUDGET */
+  .budget-list { display: flex; flex-direction: column; gap: 10px; }
+  .budget-item { background: var(--bg2); border-radius: var(--radius); padding: 14px; border: 1px solid var(--border); }
+  .budget-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .budget-name { font-size: 14px; font-weight: 600; }
+  .budget-nums { font-size: 12px; color: var(--muted); }
+  .bar-track { height: 5px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+  .budget-pct { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+  /* CHARTS */
+  .chart-card { background: var(--bg2); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); margin-bottom: 14px; }
+  .chart-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 14px; text-transform: uppercase; letter-spacing: .05em; }
+  .chart-wrap { position: relative; width: 100%; }
+
+  /* TOAST */
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-60px); background: var(--accent); color: #fff; padding: 10px 20px; border-radius: 100px; font-size: 13px; font-weight: 600; z-index: 999; transition: transform .3s; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- PAGES -->
+<div id="page-home" class="page active">
+  <div class="page-header">Обзор</div>
+  <div class="metrics">
+    <div class="metric-card"><div class="metric-label">Доходы</div><div class="metric-val green" id="m-inc">0 ₽</div></div>
+    <div class="metric-card"><div class="metric-label">Расходы</div><div class="metric-val red" id="m-exp">0 ₽</div></div>
+    <div class="metric-card wide"><div class="metric-label">Баланс</div><div class="metric-val accent" id="m-bal">0 ₽</div></div>
+  </div>
+  <div class="section-label">Последние операции</div>
+  <div class="tx-list" id="recent-list"><div class="empty">Нет транзакций</div></div>
+</div>
+
+<div id="page-add" class="page">
+  <div class="page-header">Добавить</div>
+  <div class="add-card">
+    <div class="type-row">
+      <button class="type-pill expense active" id="pill-expense" onclick="setType('expense')">— Расход</button>
+      <button class="type-pill income" id="pill-income" onclick="setType('income')">+ Доход</button>
+    </div>
+    <div class="form-row">
+      <div class="form-field" style="flex:2">
+        <label>Описание</label>
+        <input id="f-desc" type="text" placeholder="Кофе, зарплата…" />
+      </div>
+      <div class="form-field">
+        <label>Сумма ₽</label>
+        <input id="f-amount" type="number" inputmode="decimal" placeholder="500" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-field">
+        <label>Категория</label>
+        <select id="f-cat">
+          <option value="🍔 Еда">🍔 Еда</option>
+          <option value="🚇 Транспорт">🚇 Транспорт</option>
+          <option value="🎬 Развлечения">🎬 Развлечения</option>
+          <option value="🏠 Коммунальные">🏠 Коммунальные</option>
+          <option value="👗 Одежда">👗 Одежда</option>
+          <option value="💊 Здоровье">💊 Здоровье</option>
+          <option value="💰 Зарплата">💰 Зарплата</option>
+          <option value="📦 Прочее">📦 Прочее</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Дата</label>
+        <input id="f-date" type="date" />
+      </div>
+    </div>
+    <button class="btn-submit" onclick="addTx()">Добавить</button>
+  </div>
+</div>
+
+<div id="page-budget" class="page">
+  <div class="page-header">Бюджет</div>
+  <div class="section-label" style="margin-bottom:14px">Лимиты на месяц</div>
+  <div class="budget-list" id="budget-list"></div>
+</div>
+
+<div id="page-charts" class="page">
+  <div class="page-header">Графики</div>
+  <div class="chart-card">
+    <div class="chart-title">Расходы по категориям</div>
+    <div class="chart-wrap" style="height:240px"><canvas id="c-donut" role="img" aria-label="Расходы по категориям — кольцевая диаграмма"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Доходы и расходы</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="c-bar" role="img" aria-label="Доходы и расходы по месяцам"></canvas></div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav">
+  <button class="nav-btn active" id="nav-home" onclick="switchPage('home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Обзор
+  </button>
+  <button class="nav-btn" id="nav-add" onclick="switchPage('add')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    Добавить
+  </button>
+  <button class="nav-btn" id="nav-budget" onclick="switchPage('budget')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    Бюджет
+  </button>
+  <button class="nav-btn" id="nav-charts" onclick="switchPage('charts')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Графики
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const STORAGE_KEY = 'fin_data_v1';
+let txType = 'expense';
+let transactions = [];
+let budgets = { '🍔 Еда': 15000, '🚇 Транспорт': 3000, '🎬 Развлечения': 5000, '🏠 Коммунальные': 6000, '👗 Одежда': 5000, '💊 Здоровье': 3000 };
+let nextId = 1;
+let donutChart = null, barChart = null;
+
+const fmt = n => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// --- STORAGE ---
+function saveData() {
+  const data = JSON.stringify({ transactions, budgets, nextId });
+  if (tg?.CloudStorage) {
+    tg.CloudStorage.setItem(STORAGE_KEY, data);
+  } else {
+    localStorage.setItem(STORAGE_KEY, data);
+  }
+}
+
+function loadData(cb) {
+  if (tg?.CloudStorage) {
+    tg.CloudStorage.getItem(STORAGE_KEY, (err, val) => {
+      if (!err && val) {
+        try { const d = JSON.parse(val); transactions = d.transactions || []; budgets = d.budgets || budgets; nextId = d.nextId || 1; } catch(e){}
+      }
+      cb();
+    });
+  } else {
+    const val = localStorage.getItem(STORAGE_KEY);
+    if (val) { try { const d = JSON.parse(val); transactions = d.transactions || []; budgets = d.budgets || budgets; nextId = d.nextId || 1; } catch(e){} }
+    cb();
+  }
+}
+
+// --- NAVIGATION ---
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'charts') setTimeout(renderCharts, 50);
+  render();
+}
+
+// --- TYPE ---
+function setType(t) {
+  txType = t;
+  document.getElementById('pill-expense').classList.toggle('active', t === 'expense');
+  document.getElementById('pill-income').classList.toggle('active', t === 'income');
+  const sel = document.getElementById('f-cat');
+  sel.value = t === 'income' ? '💰 Зарплата' : '🍔 Еда';
+}
+
+// --- ADD ---
+function addTx() {
+  const desc = document.getElementById('f-desc').value.trim();
+  const amount = parseFloat(document.getElementById('f-amount').value);
+  const cat = document.getElementById('f-cat').value;
+  const date = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
+  if (!desc || !amount || amount <= 0) { showToast('Заполни описание и сумму'); return; }
+  transactions.unshift({ id: nextId++, type: txType, desc, amount, cat, date });
+  document.getElementById('f-desc').value = '';
+  document.getElementById('f-amount').value = '';
+  saveData();
+  render();
+  showToast(txType === 'expense' ? '— Расход добавлен' : '+ Доход добавлен');
+  if (tg) tg.HapticFeedback?.notificationOccurred('success');
+  switchPage('home');
+}
+
+function delTx(id) {
+  transactions = transactions.filter(t => t.id !== id);
+  saveData();
+  render();
+  if (tg) tg.HapticFeedback?.impactOccurred('light');
+}
+
+// --- RENDER ---
+const catEmoji = { '🍔 Еда':'🍔','🚇 Транспорт':'🚇','🎬 Развлечения':'🎬','🏠 Коммунальные':'🏠','👗 Одежда':'👗','💊 Здоровье':'💊','💰 Зарплата':'💰','📦 Прочее':'📦' };
+
+function render() {
+  const expenses = transactions.filter(t => t.type === 'expense');
+  const income = transactions.filter(t => t.type === 'income');
+  const totalInc = income.reduce((s, t) => s + t.amount, 0);
+  const totalExp = expenses.reduce((s, t) => s + t.amount, 0);
+  const bal = totalInc - totalExp;
+
+  document.getElementById('m-inc').textContent = fmt(totalInc);
+  document.getElementById('m-exp').textContent = fmt(totalExp);
+  const balEl = document.getElementById('m-bal');
+  balEl.textContent = fmt(bal);
+  balEl.className = 'metric-val ' + (bal >= 0 ? 'green' : 'red');
+
+  const recent = transactions.slice(0, 8);
+  const rl = document.getElementById('recent-list');
+  rl.innerHTML = recent.length ? recent.map(t => txHTML(t, true)).join('') : '<div class="empty">Нет транзакций</div>';
+
+  renderBudget(expenses);
+}
+
+function txHTML(t, showDel) {
+  const emoji = catEmoji[t.cat] || '📦';
+  const sign = t.type === 'income' ? '+' : '−';
+  return `<div class="tx-item">
+    <div class="tx-icon ${t.type}">${emoji}</div>
+    <div class="tx-info">
+      <div class="tx-desc">${t.desc}</div>
+      <div class="tx-meta">${t.cat} · ${t.date}</div>
+    </div>
+    <div class="tx-amount ${t.type}">${sign}${fmt(t.amount)}</div>
+    ${showDel ? `<button class="tx-del" onclick="delTx(${t.id})">✕</button>` : ''}
+  </div>`;
+}
+
+function renderBudget(expenses) {
+  const cats = Object.keys(budgets);
+  const bl = document.getElementById('budget-list');
+  bl.innerHTML = cats.map(cat => {
+    const spent = (expenses || transactions.filter(t=>t.type==='expense')).filter(t => t.cat === cat).reduce((s,t) => s+t.amount, 0);
+    const budget = budgets[cat];
+    const pct = Math.min(100, Math.round(spent / budget * 100));
+    const color = pct >= 90 ? '#ff5c5c' : pct >= 70 ? '#ffaa00' : '#2ecc8f';
+    return `<div class="budget-item">
+      <div class="budget-top">
+        <span class="budget-name">${cat}</span>
+        <span class="budget-nums">${fmt(spent)} / ${fmt(budget)}</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="budget-pct">${pct}% использовано</div>
+    </div>`;
+  }).join('');
+}
+
+function renderCharts() {
+  const expenses = transactions.filter(t => t.type === 'expense');
+  const catTotals = {};
+  expenses.forEach(t => { catTotals[t.cat] = (catTotals[t.cat] || 0) + t.amount; });
+  const cats = Object.keys(catTotals);
+  const vals = cats.map(c => catTotals[c]);
+  const colors = ['#6c63ff','#2ecc8f','#ff5c5c','#ffaa00','#3ab5e5','#ff8c69','#a78bfa','#888899'];
+
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById('c-donut'), {
+    type: 'doughnut',
+    data: { labels: cats, datasets: [{ data: vals, backgroundColor: colors, borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#888899', font: { size: 11, family: 'Manrope' }, boxWidth: 10, padding: 12 } },
+        tooltip: { callbacks: { label: i => i.label + ': ' + fmt(i.raw) } } } }
+  });
+
+  const months = ['Янв','Фев','Мар','Апр','Май','Июн'];
+  const inc = transactions.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const exp = transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const mockInc = [55000,62000,58000,70000,75000,inc||0];
+  const mockExp = [38000,42000,47000,40000,52000,exp||0];
+
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('c-bar'), {
+    type: 'bar',
+    data: { labels: months, datasets: [
+      { label: 'Доходы', data: mockInc, backgroundColor: 'rgba(46,204,143,.6)', borderRadius: 5, borderWidth: 0 },
+      { label: 'Расходы', data: mockExp, backgroundColor: 'rgba(255,92,92,.6)', borderRadius: 5, borderWidth: 0 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#888899', font: { size: 11, family: 'Manrope' }, boxWidth: 10 } } },
+      scales: {
+        x: { ticks: { color: '#888899', font: { size: 11 } }, grid: { display: false } },
+        y: { ticks: { color: '#888899', font: { size: 11 }, callback: v => Math.round(v/1000)+'k' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+
+// --- INIT ---
+document.getElementById('f-date').valueAsDate = new Date();
+loadData(() => render());
+</script>
+</body>
+</html>
