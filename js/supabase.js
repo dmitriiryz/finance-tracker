@@ -23,7 +23,7 @@ function getTelegramUser(){
   let user = window.Telegram?.WebApp?.initDataUnsafe?.user || null;
   if(!user) return null;
   return {
-    telegram_id: user.id,
+    tg_id: user.id,
     first_name: user.first_name || '',
     username: user.username || '',
     language_code: user.language_code || ''

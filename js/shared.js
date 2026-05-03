@@ -140,9 +140,9 @@ function inviteCode(){return Math.random().toString(36).slice(2,8).toUpperCase()
 async function createSharedInvite(){
   let client = sharedClient();
   let code = inviteCode();
-  let r = await client.from('household_invites').insert({household_id:currentHousehold.id,code,created_by:sharedUser.id}).select('code').single();
+  let r = await client.rpc('create_household_invite',{hid:currentHousehold.id,invite_code:code});
   if(r.error) throw r.error;
-  sharedInviteCode = r.data.code;
+  sharedInviteCode = r.data || code;
 }
 
 async function joinSharedHousehold(){
