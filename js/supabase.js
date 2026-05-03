@@ -38,9 +38,9 @@ async function ensureSupabaseAuth(){
     let anon = await client.auth.signInAnonymously();
     if(anon.error) throw anon.error;
   }
-  let initData = window.Telegram?.WebApp?.initData || '';
-  if(!initData) throw new Error('Telegram initData is required for shared mode');
-  let res = await client.functions.invoke('tg-auth', {body:{initData}});
+  const initData = window.Telegram?.WebApp?.initData || '';
+  const telegramUser = getTelegramUser();
+  let res = await client.functions.invoke('tg-auth', {body:{initData, telegramUser}});
   if(res.error) throw res.error;
   return res.data?.app_user || null;
 }
