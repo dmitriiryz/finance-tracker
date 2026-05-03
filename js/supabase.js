@@ -38,9 +38,23 @@ async function ensureSupabaseAuth(){
     let anon = await client.auth.signInAnonymously();
     if(anon.error) throw anon.error;
   }
-  const initData = window.Telegram?.WebApp?.initData || '';
-  const telegramUser = getTelegramUser();
-  let res = await client.functions.invoke('tg-auth', {body:{initData, telegramUser}});
+
+  const tg = window.Telegram?.WebApp || null;
+  if(tg?.ready) tg.ready();
+  const initData = tg?.initData || "";
+
+  console.log("Telegram WebApp exists:", Boolean(tg));
+  console.log("Telegram initData length:", initData.length);
+  console.log("Telegram initDataUnsafe user:", tg?.initDataUnsafe?.user || null);
+
+  if(!initData){
+    alert("Открой приложение через Telegram Mini App, не напрямую в браузере.");
+    throw new Error("Telegram initData is empty. Open the app inside Telegram Mini App.");
+  }
+
+  const res = await client.functions.invoke("tg-auth", {
+    body: { initData }
+  });
   if(res.error) throw res.error;
   return res.data?.app_user || null;
 }
