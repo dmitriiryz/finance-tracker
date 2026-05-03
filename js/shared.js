@@ -3,6 +3,7 @@ let currentHousehold = null;
 let sharedUser = null;
 let sharedMembers = [];
 let sharedInviteCode = '';
+let activeHouseholdId = null;
 let personalRuntime = null;
 let sharedHooksInstalled = false;
 
@@ -14,6 +15,8 @@ function isUuid(v){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a
 function sharedTxId(id){return String(id)}
 function sharedModeWanted(){try{return localStorage.getItem('fin_app_mode')==='shared'}catch{return false}}
 function rememberMode(mode){try{localStorage.setItem('fin_app_mode',mode)}catch{}}
+function rememberActiveHousehold(id){activeHouseholdId=id||null;try{id?localStorage.setItem('fin_active_household_id',id):localStorage.removeItem('fin_active_household_id')}catch{}}
+function loadActiveHousehold(){try{return localStorage.getItem('fin_active_household_id')||null}catch{return null}}
 
 function toAppCategory(r){return{id:r.id,emoji:r.emoji||'📦',name:r.name||'Categoria',type:r.type||'expense',budget:Number(r.budget)||0,archived:!!r.archived}}
 function toAppTx(r){return{id:r.id,type:r.type,desc:r.desc,catId:r.category_id||'cat_otros',date:r.date,amountOriginal:Number(r.amount_original)||0,currency:r.currency||'ARS',rateToARS:Number(r.rate_to_ars)||1,amountARS:Number(r.amount_ars)||0,rateProvider:r.rate_provider||'',rateFetchedAt:r.rate_fetched_at||null}}
@@ -27,13 +30,19 @@ async function sharedEnsureAuth(){
   return sharedUser;
 }
 
-async function sharedLoadProfile(){
+async function sharedLoadProfile(preferredHouseholdId=null){
   let client = sharedClient();
   if(!client) return;
   await sharedEnsureAuth();
-  let mem = await client.from('household_members').select('role, households(id,name,base_currency,created_by,created_at,updated_at)').eq('user_id', sharedUser.id).limit(1);
+  let wanted = preferredHouseholdId || activeHouseholdId || loadActiveHousehold();
+  let mem = await client.from('household_members').select('role, joined_at, households(id,name,base_currency,created_by,created_at,updated_at)').eq('user_id', sharedUser.id).order('joined_at', {ascending:false});
   if(mem.error) throw mem.error;
-  currentHousehold = mem.data?.[0]?.households || null;
+  let rows = mem.data || [];
+  let picked = rows.find(r=>r.households?.id === wanted) || rows[0] || null;
+  currentHousehold = picked?.households || null;
+  if(currentHousehold) rememberActiveHousehold(currentHousehold.id);
+  sharedMembers = [];
+  sharedInviteCode = '';
   if(currentHousehold) await sharedLoadHouseholdMeta();
 }
 
@@ -181,12 +190,18 @@ async function joinSharedHousehold(){
   let client = sharedClient();
   try{
     await sharedEnsureAuth();
-    let r = await client.rpc('join_household_by_invite',{invite_code:code});
+    let r = await client.rpc('join_household_by_code',{code_text:code});
+    console.log('shared join_household_by_code result:', r);
     if(r.error) throw r.error;
-    await sharedLoadProfile();
-    await switchAppMode('shared');
+    if(!r.data) throw new Error('join_household_by_code returned empty household id');
+    rememberActiveHousehold(r.data);
+    await sharedLoadProfile(r.data);
+    await sharedLoadData();
+    appMode = 'shared';
+    rememberMode('shared');
+    renderAll();
     toast('Unido al presupuesto compartido');
-  }catch(e){sharedToastError(e)}
+  }catch(e){sharedToastError(e,'Join invite error')}
 }
 
 async function leaveSharedHousehold(){
@@ -195,7 +210,7 @@ async function leaveSharedHousehold(){
   try{
     let r = await client.from('household_members').delete().eq('household_id', currentHousehold.id).eq('user_id', sharedUser.id);
     if(r.error) throw r.error;
-    currentHousehold = null; sharedMembers=[]; sharedInviteCode='';
+    currentHousehold = null; sharedMembers=[]; sharedInviteCode=''; rememberActiveHousehold(null);
     await switchAppMode('personal');
   }catch(e){sharedToastError(e)}
 }

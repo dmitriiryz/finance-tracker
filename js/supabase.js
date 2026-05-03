@@ -30,6 +30,18 @@ function getTelegramUser(){
   };
 }
 
+async function supabaseFunctionErrorMessage(error){
+  if(!error) return 'Unknown Supabase function error';
+  let message = error.message || String(error);
+  try{
+    if(error.context?.json){
+      let body = await error.context.json();
+      if(body?.error) message += ': '+body.error;
+    }
+  }catch{}
+  return message;
+}
+
 async function ensureSupabaseAuth(){
   let client = getSupabaseClient();
   if(!client) return null;
@@ -55,6 +67,10 @@ async function ensureSupabaseAuth(){
   const res = await client.functions.invoke("tg-auth", {
     body: { initData }
   });
-  if(res.error) throw res.error;
+  if(res.error){
+    let message = await supabaseFunctionErrorMessage(res.error);
+    console.error('tg-auth invoke error:', message, res.error);
+    throw new Error(message);
+  }
   return res.data?.app_user || null;
 }
