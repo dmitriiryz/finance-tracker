@@ -12,7 +12,7 @@ function isSharedMode(){return appMode === 'shared'}
 function sharedClient(){return getSupabaseClient ? getSupabaseClient() : null}
 function sharedErrorMessage(e){return e?.message || e?.error_description || e?.details || e?.hint || String(e || 'Supabase error')}
 function sharedToastError(e, context='Supabase'){let message=sharedErrorMessage(e);console.error(context+':', message, e);toast(context+': '+message)}
-function isUuid(v){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(v||''))}
+function isUuid(v){return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ''))}
 function sharedTxId(id){return String(id)}
 function sharedModeWanted(){try{return localStorage.getItem('fin_app_mode')==='shared'}catch{return false}}
 function rememberMode(mode){try{localStorage.setItem('fin_app_mode',mode)}catch{}}
@@ -93,7 +93,7 @@ async function refreshSharedCategories(preferredCatId=''){
   let mapped = rows.map(toAppCategory);
   let invalid = mapped.filter(c=>!isUuid(c.id));
   if(invalid.length) console.error('shared categories with invalid ids', invalid);
-  meta.categories = mapped.filter(c=>isUuid(c.id));
+  meta.categories = mapped;
   console.log('shared categories refreshed', {
     currentHouseholdId: currentHousehold?.id,
     categoriesCount: meta.categories.length,
@@ -318,13 +318,15 @@ async function sharedLoadData(){
   (rates.data || []).forEach(r=>meta.settings.ratesCache[r.currency]={rateToARS:Number(r.rate_to_ars)||0,provider:r.provider||'manual',fetchedAt:r.fetched_at,updatedAt:r.updated_at});
   transactions = (txs.data || []).map(toAppTx);
   meta.availableMonths = [...new Set(transactions.map(monthKey).filter(Boolean))].sort();
-  const loadedCategories = (cats.data || []).map(toAppCategory).filter(c=>isUuid(c.id));
+  const loadedCategories = (cats.data || []).map(toAppCategory);
   meta.categories = loadedCategories;
   if(!meta.categories.length){
     await ensureSharedDefaultCategories();
   }
   await refreshSharedCategories();
   await ensureSharedCategoriesReady();
+  syncSharedCategoryDropdowns();
+  renderAll();
 }
 
 async function sharedSaveMeta(){
