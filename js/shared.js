@@ -8,7 +8,8 @@ let sharedHooksInstalled = false;
 
 function isSharedMode(){return appMode === 'shared'}
 function sharedClient(){return getSupabaseClient ? getSupabaseClient() : null}
-function sharedToastError(e){console.error(e);toast('Supabase error')}
+function sharedErrorMessage(e){return e?.message || e?.error_description || e?.details || e?.hint || String(e || 'Supabase error')}
+function sharedToastError(e, context='Supabase'){let message=sharedErrorMessage(e);console.error(context+':', message, e);toast(context+': '+message)}
 function isUuid(v){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(v||''))}
 function sharedTxId(id){return String(id)}
 function sharedModeWanted(){try{return localStorage.getItem('fin_app_mode')==='shared'}catch{return false}}
@@ -40,10 +41,13 @@ async function sharedLoadHouseholdMeta(){
   let client = sharedClient();
   if(!client || !currentHousehold) return;
   let members = await client.from('household_members').select('role, app_users(id,tg_id,first_name,username)').eq('household_id', currentHousehold.id).order('created_at');
-  if(!members.error) sharedMembers = members.data || [];
+  if(members.error) throw members.error;
+  sharedMembers = members.data || [];
   let invites = await client.from('household_invites').select('code,expires_at,used_at').eq('household_id', currentHousehold.id).is('used_at', null).order('created_at', {ascending:false}).limit(1);
-  if(!invites.error) sharedInviteCode = invites.data?.[0]?.code || '';
+  if(invites.error) throw invites.error;
+  sharedInviteCode = invites.data?.[0]?.code || '';
 }
+
 
 async function sharedLoadData(){
   let client = sharedClient();
@@ -101,7 +105,10 @@ async function switchAppMode(mode){
   try{
     personalRuntime = {...personalRuntime, meta, transactions:[...transactions]};
     await sharedLoadProfile();
-    if(!currentHousehold) return toast('Crea o únete a un presupuesto compartido');
+    if(!currentHousehold){
+      await createSharedHousehold(true);
+      if(!currentHousehold) return;
+    }
     await sharedLoadData();
     appMode = 'shared';
     rememberMode('shared');
@@ -109,40 +116,63 @@ async function switchAppMode(mode){
   }catch(e){sharedToastError(e)}
 }
 
-async function createSharedHousehold(){
+async function createSharedHousehold(autoSwitch=false){
   if(!isSupabaseConfigured()) return toast('Supabase no está configurado');
   let name = prompt('Nombre del presupuesto compartido','Presupuesto compartido');
   if(!name) return;
   let client = sharedClient();
   try{
+    console.log('shared create: start');
     await sharedEnsureAuth();
+    console.log('shared create: app user', sharedUser?.id || null);
     let created = await client.rpc('create_household_with_owner',{household_name:name});
+    console.log('shared create_household_with_owner result:', created);
     if(created.error) throw created.error;
+    if(!created.data) throw new Error('create_household_with_owner returned empty household id');
     let h = await client.from('households').select('*').eq('id', created.data).single();
+    console.log('shared household select result:', h);
     if(h.error) throw h.error;
     currentHousehold = h.data;
     await ensureSharedDefaultCategories();
     await createSharedInvite();
-    await sharedLoadProfile();
+    await sharedLoadHouseholdMeta();
+    if(autoSwitch){
+      await sharedLoadData();
+      appMode = 'shared';
+      rememberMode('shared');
+    }
     renderAll();
     toast('Presupuesto compartido creado');
-  }catch(e){sharedToastError(e)}
+  }catch(e){sharedToastError(e,'Shared setup error')}
 }
 
 async function ensureSharedDefaultCategories(){
   let client = sharedClient();
+  if(!currentHousehold?.id) throw new Error('No household id for default categories');
+  let existing = await client.from('shared_categories').select('id').eq('household_id', currentHousehold.id).limit(1);
+  console.log('shared default categories existing:', existing);
+  if(existing.error) throw existing.error;
+  if(existing.data?.length) return;
   let rows = DEF.map(c=>catToDb(c));
   let r = await client.from('shared_categories').insert(rows);
+  console.log('shared default categories insert:', r);
   if(r.error) throw r.error;
 }
 
 function inviteCode(){return Math.random().toString(36).slice(2,8).toUpperCase()+Math.random().toString(36).slice(2,6).toUpperCase()}
 async function createSharedInvite(){
   let client = sharedClient();
+  if(!currentHousehold?.id) throw new Error('No household id for invite code');
+  let existing = await client.from('household_invites').select('code,expires_at,used_at').eq('household_id', currentHousehold.id).is('used_at', null).order('created_at', {ascending:false}).limit(1);
+  console.log('shared invite existing:', existing);
+  if(existing.error) throw existing.error;
+  if(existing.data?.[0]?.code){sharedInviteCode = existing.data[0].code; return sharedInviteCode;}
   let code = inviteCode();
   let r = await client.rpc('create_household_invite',{hid:currentHousehold.id,invite_code:code});
+  console.log('shared create_household_invite result:', r);
   if(r.error) throw r.error;
   sharedInviteCode = r.data || code;
+  return sharedInviteCode;
 }
 
 async function joinSharedHousehold(){
@@ -171,7 +201,7 @@ async function leaveSharedHousehold(){
 }
 
 async function copySharedInvite(){
-  if(!sharedInviteCode && currentHousehold){try{await createSharedInvite()}catch(e){return sharedToastError(e)}}
+  if(!sharedInviteCode && currentHousehold){try{await createSharedInvite();renderAll()}catch(e){return sharedToastError(e,'Invite error')}}
   try{await navigator.clipboard.writeText(sharedInviteCode);toast('Código copiado')}catch{prompt('Código de invitación', sharedInviteCode)}
 }
 
@@ -188,7 +218,7 @@ function renderSharedAccess(){
     card.innerHTML='<div class="section-label" style="margin-top:0">Presupuesto compartido</div><div class="note">Supabase no está configurado</div><div class="actions-row"><button class="btn ghost" disabled>Personal</button><button class="btn ghost" disabled>Compartido</button></div>';
     return;
   }
-  let mode = '<div class="type-row" style="margin-bottom:10px"><button class="type-pill '+(!isSharedMode()?'active':'')+'" onclick="switchAppMode(\'personal\')">Personal</button><button class="type-pill '+(isSharedMode()?'active':'')+'" onclick="switchAppMode(\'shared\')" '+(!currentHousehold?'disabled':'')+'>Compartido</button></div>';
+  let mode = '<div class="type-row" style="margin-bottom:10px"><button class="type-pill '+(!isSharedMode()?'active':'')+'" onclick="switchAppMode(\'personal\')">Personal</button><button class="type-pill '+(isSharedMode()?'active':'')+'" onclick="switchAppMode(\'shared\')">Compartido</button></div>';
   if(!currentHousehold){
     card.innerHTML='<div class="section-label" style="margin-top:0">Presupuesto compartido</div>'+mode+'<button class="btn full" onclick="createSharedHousehold()">Crear presupuesto compartido</button><div class="form-row" style="margin-top:10px"><div class="field"><label>Código de invitación</label><input id="shared-invite-input" placeholder="ABC123"></div><button class="btn" onclick="joinSharedHousehold()" style="align-self:end">Unirse</button></div>';
     return;
