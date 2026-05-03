@@ -20,8 +20,11 @@ function rememberActiveHousehold(id){activeHouseholdId=id||null;try{id?localStor
 function loadActiveHousehold(){try{return localStorage.getItem('fin_active_household_id')||null}catch{return null}}
 
 function toAppCategory(r){return{id:r.id,emoji:r.emoji||'📦',name:r.name||'Categoria',type:r.type||'expense',budget:Number(r.budget)||0,archived:!!r.archived}}
-function toAppTx(r){return{id:r.id,type:r.type,desc:r.desc,catId:r.category_id||'cat_otros',date:r.date,amountOriginal:Number(r.amount_original)||0,currency:r.currency||'ARS',rateToARS:Number(r.rate_to_ars)||1,amountARS:Number(r.amount_ars)||0,rateProvider:r.rate_provider||'',rateFetchedAt:r.rate_fetched_at||null,createdBy:r.created_by||null,authorName:sharedMemberNameById(r.created_by)}}
-function txToDb(t){return{household_id:currentHousehold.id,type:t.type,desc:t.desc,category_id:isUuid(t.catId)?t.catId:null,date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}}
+function toAppTx(r){return{id:r.id,type:r.type,desc:r.desc,catId:r.category_id||'uncategorized',date:r.date,amountOriginal:Number(r.amount_original)||0,currency:r.currency||'ARS',rateToARS:Number(r.rate_to_ars)||1,amountARS:Number(r.amount_ars)||0,rateProvider:r.rate_provider||'',rateFetchedAt:r.rate_fetched_at||null,createdBy:r.created_by||null,authorName:sharedMemberNameById(r.created_by)}}
+function txToDb(t){
+  if(!isUuid(t.catId)) throw new Error('Invalid shared category id');
+  return{household_id:currentHousehold.id,type:t.type,desc:t.desc,category_id:t.catId,date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}
+}
 function catToDb(c){return{household_id:currentHousehold.id,emoji:c.emoji||'📦',name:c.name,type:c.type,budget:Number(c.budget)||0,archived:!!c.archived}}
 
 function extendSharedI18N(){
@@ -32,6 +35,32 @@ function extendSharedI18N(){
   Object.assign(I18N.ru, {
     sharedBudget:'Общий бюджет', sharedPersonal:'Личный', sharedShared:'Общий', sharedCreate:'Создать общий бюджет', sharedInviteCode:'Код приглашения', sharedJoin:'Вступить', sharedHousehold:'Бюджет', sharedCopyCode:'Скопировать код', sharedCopyData:'Перенести мои данные в общий бюджет', sharedLeave:'Выйти из общего бюджета', sharedUser:'Пользователь', sharedOwner:'владелец', sharedMember:'участник', sharedCodeRequired:'Введите код приглашения', sharedJoined:'Вы вступили в общий бюджет', sharedCreated:'Общий бюджет создан', sharedDataUpdated:'Данные обновлены', sharedRefresh:'Обновить общий бюджет', sharedUpdated:'Обновлено', sharedNowActive:'Сейчас активно', modePersonal:'Режим: Личный бюджет', modeShared:'Режим: Общий бюджет', addPersonalHint:'Операция будет сохранена только у вас', addSharedHint:'Операция будет добавлена в общий бюджет', sharedEmptyOps:'Пока нет операций в общем бюджете', personalEmptyOps:'Пока нет личных операций', sharedCopyConfirm:'Ваши личные операции и категории будут скопированы в общий бюджет. Продолжить?', sharedCopyDone:'Данные скопированы в общий бюджет', sharedLeaveConfirm:'Выйти из общего бюджета?', sharedCodeCopied:'Код скопирован', sharedAddedBy:'Добавил(а)'
   });
+}
+
+
+function syncSharedCategoryDropdowns(){
+  let f=document.getElementById('f-cat');
+  if(f) fillCats('f-cat', txType, isUuid(f.value)?f.value:'');
+  let modal=document.getElementById('edit-modal'), e=document.getElementById('e-cat');
+  if(e && modal?.classList.contains('open')) fillCats('e-cat', editType, isUuid(e.value)?e.value:'');
+}
+
+function validateSharedTxCategory(t){
+  let selected = meta.categories.find(c=>c.id===t?.catId) || null;
+  console.log('shared add tx category debug', {
+    appMode,
+    selectedCatId: t?.catId,
+    isUuid: isUuid(t?.catId),
+    category: cat(t?.catId),
+    currentHouseholdId: currentHousehold?.id,
+    categories: meta.categories.map(c => ({id:c.id,name:c.name,emoji:c.emoji,type:c.type}))
+  });
+  if(!t?.catId || !isUuid(t.catId) || !selected){
+    console.error('Invalid shared transaction category', {selectedCatId:t?.catId, appMode, currentHouseholdId:currentHousehold?.id, categories:meta.categories});
+    toast('Категория не синхронизирована. Обновите общий бюджет.');
+    return false;
+  }
+  return true;
 }
 
 function sharedMemberNameById(id){
@@ -143,12 +172,12 @@ async function sharedLoadData(){
   let personalSettings = personalRuntime?.meta?.settings || meta?.settings || {usdRateSource:'blue',language:'es',ratesCache:{}};
   meta = createMeta();
   meta.categories = (cats.data || []).map(toAppCategory);
-  if(!meta.categories.length) meta.categories = JSON.parse(JSON.stringify(DEF));
   meta.settings = JSON.parse(JSON.stringify(personalSettings));
   meta.settings.ratesCache = {};
   (rates.data || []).forEach(r=>meta.settings.ratesCache[r.currency]={rateToARS:Number(r.rate_to_ars)||0,provider:r.provider||'manual',fetchedAt:r.fetched_at,updatedAt:r.updated_at});
   transactions = (txs.data || []).map(toAppTx);
   meta.availableMonths = [...new Set(transactions.map(monthKey).filter(Boolean))].sort();
+  syncSharedCategoryDropdowns();
 }
 
 async function sharedSaveMeta(){
@@ -190,6 +219,7 @@ async function switchAppMode(mode){
       if(!currentHousehold) return;
     }
     await sharedLoadData();
+    syncSharedCategoryDropdowns();
     appMode = 'shared';
     rememberMode('shared');
     renderAll();
@@ -218,6 +248,7 @@ async function createSharedHousehold(autoSwitch=false){
     await sharedLoadHouseholdMeta();
     if(autoSwitch){
       await sharedLoadData();
+      syncSharedCategoryDropdowns();
       appMode = 'shared';
       rememberMode('shared');
     }
@@ -268,6 +299,7 @@ async function joinSharedHousehold(){
     rememberActiveHousehold(r.data);
     await sharedLoadProfile(r.data);
     await sharedLoadData();
+    syncSharedCategoryDropdowns();
     appMode = 'shared';
     rememberMode('shared');
     renderAll();
@@ -315,6 +347,7 @@ function renderSharedAccess(){
 
 async function sharedAddTx(){
   let t = formTx('f',txType); if(!t) return;
+  if(!validateSharedTxCategory(t)) return;
   let client = sharedClient();
   try{
     let r = await client.from('shared_transactions').insert({...txToDb(t),created_by:sharedUser.id}).select('*').single();
@@ -341,6 +374,7 @@ async function sharedSaveEdit(){
   let i = transactions.findIndex(t=>sharedTxId(t.id)===sharedTxId(editId));
   if(i<0) return;
   let t = formTx('e',editType,{id:transactions[i].id}); if(!t) return;
+  if(!validateSharedTxCategory(t)) return;
   let client = sharedClient();
   try{
     let r = await client.from('shared_transactions').update(txToDb(t)).eq('id', sharedTxId(t.id)).eq('household_id', currentHousehold.id).select('*').single();

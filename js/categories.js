@@ -2,9 +2,11 @@ const DEF=[{id:'cat_comida',emoji:'🍔',name:'Comida',type:'expense',budget:150
 
 const OLDMAP={'🍔 Comida':'cat_comida','🚇 Transporte':'cat_transporte','🎬 Entretenimiento':'cat_entretenimiento','🏠 Servicios':'cat_servicios','👗 Ropa':'cat_ropa','💊 Salud':'cat_salud','💰 Salario':'cat_salario','📦 Otros':'cat_otros'};
 
-function cat(id){return meta.categories.find(c=>c.id===id)||meta.categories.find(c=>c.id==='cat_otros')||meta.categories[0]}
+function uncategorizedCat(){return{id:'uncategorized',emoji:'📦',name:(typeof lang==='function'&&lang()==='es'?'Sin categoría':'Без категории'),type:'both',budget:0,archived:false}}
 
-function label(c){return c?c.emoji+' '+c.name:'📦 Otros'}
+function cat(id){return meta.categories.find(c=>c.id===id)||uncategorizedCat()}
+
+function label(c){let x=c||uncategorizedCat();return x.emoji+' '+x.name}
 
 function normCat(c){return{id:c.id||mkCatId(c.name||'categoria'),emoji:c.emoji||'📦',name:c.name||'Categoría',type:c.type||'expense',budget:Math.max(0,Number(c.budget)||0),archived:!!c.archived}}
 
