@@ -167,6 +167,29 @@ begin
 end;
 $$;
 
+create or replace function public.create_household_invite(hid uuid, invite_code text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  if not public.is_household_owner(hid) then
+    raise exception 'not household owner';
+  end if;
+
+  insert into public.household_invites (household_id, code, created_by)
+  values (hid, invite_code, auth.uid())
+  on conflict (code) do nothing;
+
+  return invite_code;
+end;
+$;
+
 create or replace function public.join_household_by_invite(invite_code text)
 returns uuid
 language plpgsql
