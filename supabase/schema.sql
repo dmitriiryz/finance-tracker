@@ -9,6 +9,17 @@ create table if not exists public.app_users (
   updated_at timestamptz default now()
 );
 
+create table if not exists public.app_user_sessions (
+  auth_user_id uuid primary key,
+  app_user_id uuid not null references public.app_users(id) on delete cascade,
+  tg_id bigint not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists app_user_sessions_app_user_id_idx on public.app_user_sessions(app_user_id);
+create index if not exists app_user_sessions_tg_id_idx on public.app_user_sessions(tg_id);
+
 create table if not exists public.households (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -92,6 +103,11 @@ create trigger app_users_touch
 before update on public.app_users
 for each row execute function public.touch_updated_at();
 
+drop trigger if exists app_user_sessions_touch on public.app_user_sessions;
+create trigger app_user_sessions_touch
+before update on public.app_user_sessions
+for each row execute function public.touch_updated_at();
+
 drop trigger if exists households_touch on public.households;
 create trigger households_touch
 before update on public.households
@@ -107,6 +123,19 @@ create trigger shared_transactions_touch
 before update on public.shared_transactions
 for each row execute function public.touch_updated_at();
 
+create or replace function public.current_app_user_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select aus.app_user_id
+  from public.app_user_sessions aus
+  where aus.auth_user_id = auth.uid()
+  limit 1
+$$;
+
 create or replace function public.is_household_member(hid uuid)
 returns boolean
 language sql
@@ -118,7 +147,7 @@ as $$
     select 1
     from public.household_members hm
     where hm.household_id = hid
-      and hm.user_id = auth.uid()
+      and hm.user_id = public.current_app_user_id()
   );
 $$;
 
@@ -133,7 +162,7 @@ as $$
     select 1
     from public.household_members hm
     where hm.household_id = hid
-      and hm.user_id = auth.uid()
+      and hm.user_id = public.current_app_user_id()
       and hm.role = 'owner'
   );
 $$;
@@ -151,16 +180,16 @@ begin
     raise exception 'not authenticated';
   end if;
 
-  if not exists (select 1 from public.app_users where id = auth.uid()) then
-    raise exception 'app user is missing';
+  if public.current_app_user_id() is null then
+    raise exception 'app user session is missing';
   end if;
 
   insert into public.households (name, base_currency, created_by)
-  values (coalesce(nullif(household_name, ''), 'Presupuesto compartido'), 'ARS', auth.uid())
+  values (coalesce(nullif(household_name, ''), 'Presupuesto compartido'), 'ARS', public.current_app_user_id())
   returning id into hid;
 
   insert into public.household_members (household_id, user_id, role)
-  values (hid, auth.uid(), 'owner')
+  values (hid, public.current_app_user_id(), 'owner')
   on conflict (household_id, user_id) do update set role = 'owner';
 
   return hid;
@@ -183,7 +212,7 @@ begin
   end if;
 
   insert into public.household_invites (household_id, code, created_by)
-  values (hid, invite_code, auth.uid())
+  values (hid, invite_code, public.current_app_user_id())
   on conflict (code) do nothing;
 
   return invite_code;
@@ -203,15 +232,15 @@ begin
     raise exception 'not authenticated';
   end if;
 
-  if not exists (select 1 from public.app_users where id = auth.uid()) then
-    raise exception 'app user is missing';
+  if public.current_app_user_id() is null then
+    raise exception 'app user session is missing';
   end if;
 
   select *
   into inv
   from public.household_invites
   where code = code_text
-    and (used_at is null or used_by = auth.uid())
+    and (used_at is null or used_by = public.current_app_user_id())
     and (expires_at is null or expires_at > now())
   limit 1;
 
@@ -220,12 +249,12 @@ begin
   end if;
 
   insert into public.household_members (household_id, user_id, role, joined_at)
-  values (inv.household_id, auth.uid(), 'member', now())
+  values (inv.household_id, public.current_app_user_id(), 'member', now())
   on conflict (household_id, user_id) do update
     set role = case when public.household_members.role = 'owner' then 'owner' else 'member' end;
 
   update public.household_invites
-  set used_by = auth.uid(),
+  set used_by = public.current_app_user_id(),
       used_at = now()
   where id = inv.id;
 
@@ -245,6 +274,7 @@ end;
 $$;
 
 alter table public.app_users enable row level security;
+alter table public.app_user_sessions enable row level security;
 alter table public.households enable row level security;
 alter table public.household_members enable row level security;
 alter table public.household_invites enable row level security;
@@ -256,14 +286,29 @@ drop policy if exists app_users_self_select on public.app_users;
 create policy app_users_self_select
 on public.app_users
 for select
-using (id = auth.uid());
+using (
+  id = public.current_app_user_id()
+  or exists (
+    select 1
+    from public.household_members mine
+    join public.household_members other on other.household_id = mine.household_id
+    where mine.user_id = public.current_app_user_id()
+      and other.user_id = public.app_users.id
+  )
+);
 
 drop policy if exists app_users_self_update on public.app_users;
 create policy app_users_self_update
 on public.app_users
 for update
-using (id = auth.uid())
-with check (id = auth.uid());
+using (id = public.current_app_user_id())
+with check (id = public.current_app_user_id());
+
+drop policy if exists app_user_sessions_self_select on public.app_user_sessions;
+create policy app_user_sessions_self_select
+on public.app_user_sessions
+for select
+using (auth_user_id = auth.uid());
 
 drop policy if exists households_member_select on public.households;
 create policy households_member_select
@@ -275,7 +320,7 @@ drop policy if exists households_create_own on public.households;
 create policy households_create_own
 on public.households
 for insert
-with check (created_by = auth.uid());
+with check (created_by = public.current_app_user_id());
 
 drop policy if exists households_owner_update on public.households;
 create policy households_owner_update
@@ -300,7 +345,7 @@ drop policy if exists household_members_self_delete on public.household_members;
 create policy household_members_self_delete
 on public.household_members
 for delete
-using (user_id = auth.uid() or public.is_household_owner(household_id));
+using (user_id = public.current_app_user_id() or public.is_household_owner(household_id));
 
 drop policy if exists household_invites_member_select on public.household_invites;
 create policy household_invites_member_select
@@ -312,7 +357,7 @@ drop policy if exists household_invites_owner_insert on public.household_invites
 create policy household_invites_owner_insert
 on public.household_invites
 for insert
-with check (public.is_household_owner(household_id) and created_by = auth.uid());
+with check (public.is_household_owner(household_id) and created_by = public.current_app_user_id());
 
 drop policy if exists household_invites_owner_update on public.household_invites;
 create policy household_invites_owner_update
