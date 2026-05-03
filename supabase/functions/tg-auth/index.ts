@@ -1,0 +1,79 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""; // Server-side only. Never put it in frontend code.
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS"
+};
+
+function jsonResponse(body: unknown, status = 200){
+  return Response.json(body, {status, headers: corsHeaders});
+}
+
+function parseTelegramUserFromInitData(initData: string){
+  if(!initData) return null;
+  try{
+    const raw = new URLSearchParams(initData).get("user");
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){
+    console.warn("tg-auth initData user parse failed:", e?.message || String(e));
+    return null;
+  }
+}
+
+function normalizeTelegramUser(user: any){
+  const id = user?.id || user?.telegram_id;
+  if(!id) return null;
+  return {
+    id,
+    first_name: user.first_name || null,
+    username: user.username || null
+  };
+}
+
+Deno.serve(async (req) => {
+  if(req.method === "OPTIONS"){
+    return new Response("ok", {status:200, headers: corsHeaders});
+  }
+
+  try{
+    if(req.method !== "POST"){
+      return new Response("Method not allowed", {status:405, headers: corsHeaders});
+    }
+
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace("Bearer ", "");
+    const {initData, telegramUser} = await req.json();
+    console.log("tg-auth initData exists:", Boolean(initData));
+
+    const tgUser = normalizeTelegramUser(parseTelegramUserFromInitData(initData)) || normalizeTelegramUser(telegramUser);
+    console.log("tg-auth telegram user:", tgUser?.id || null);
+    if(!tgUser) return jsonResponse({error:"Telegram user is missing"}, 400);
+
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const {data:{user}, error:userError} = await admin.auth.getUser(token);
+    console.log("tg-auth supabase user:", user?.id || null);
+    if(userError || !user) throw userError || new Error("Supabase auth user is missing");
+
+    const appUser = {
+      id:user.id,
+      telegram_id:tgUser.id,
+      first_name:tgUser.first_name,
+      username:tgUser.username,
+      updated_at:new Date().toISOString()
+    };
+    const {data, error} = await admin.from("app_users").upsert(appUser, {onConflict:"id"}).select("*").single();
+    if(error) throw error;
+    return jsonResponse({app_user:data});
+  }catch(e){
+    const message = e?.message || String(e);
+    console.error("tg-auth error:", message);
+    return Response.json(
+      { error: message },
+      { status: 401, headers: corsHeaders }
+    );
+  }
+});
