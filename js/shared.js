@@ -96,6 +96,7 @@ async function sharedEnsureAuth(){
   if(!isSupabaseConfigured()) return null;
   if(sharedUser) return sharedUser;
   sharedUser = await ensureSupabaseAuth();
+  console.log('shared stable app user:', sharedUser?.id || null, sharedUser?.tg_id || null);
   return sharedUser;
 }
 
@@ -110,6 +111,7 @@ async function sharedLoadProfile(preferredHouseholdId=null){
   let picked = rows.find(r=>r.households?.id === wanted) || rows[0] || null;
   currentHousehold = picked?.households || null;
   if(currentHousehold) rememberActiveHousehold(currentHousehold.id);
+  console.log('shared currentHousehold:', currentHousehold?.id || null);
   sharedMembers = [];
   sharedInviteCode = '';
   if(currentHousehold) await sharedLoadHouseholdMeta();
