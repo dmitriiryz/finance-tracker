@@ -38,28 +38,71 @@ function extendSharedI18N(){
 }
 
 
-function syncSharedCategoryDropdowns(){
+function syncSharedCategoryDropdowns(preferredCatId=''){
   let f=document.getElementById('f-cat');
-  if(f) fillCats('f-cat', txType, isUuid(f.value)?f.value:'');
+  if(f) fillCats('f-cat', txType, preferredCatId || (isUuid(f.value)?f.value:''));
   let modal=document.getElementById('edit-modal'), e=document.getElementById('e-cat');
-  if(e && modal?.classList.contains('open')) fillCats('e-cat', editType, isUuid(e.value)?e.value:'');
+  if(e && modal?.classList.contains('open')) fillCats('e-cat', editType, preferredCatId || (isUuid(e.value)?e.value:''));
 }
 
-function validateSharedTxCategory(t){
-  let selected = meta.categories.find(c=>c.id===t?.catId) || null;
-  console.log('shared add tx category debug', {
+async function refreshSharedCategories(preferredCatId=''){
+  let client = sharedClient();
+  if(!client || !currentHousehold?.id) return [];
+  let res = await client.from('shared_categories').select('*').eq('household_id', currentHousehold.id).order('created_at');
+  if(res.error) throw res.error;
+  let mapped = (res.data || []).map(toAppCategory);
+  let invalid = mapped.filter(c=>!isUuid(c.id));
+  if(invalid.length) console.error('shared categories with invalid ids', invalid);
+  meta.categories = mapped.filter(c=>isUuid(c.id));
+  syncSharedCategoryDropdowns(preferredCatId);
+  return meta.categories;
+}
+
+function findSharedCategoryFromSelectedText(selectedText, type){
+  let text = String(selectedText || '').replace(/\(archivada\)$/i,'').trim().toLowerCase();
+  if(!text) return null;
+  let allowedCats = meta.categories.filter(c=>allowed(c,type,true));
+  return allowedCats.find(c=>text.includes(String(c.name||'').toLowerCase())) || null;
+}
+
+function sharedFallbackCategoryId(type='expense'){
+  let list = meta.categories.filter(c=>allowed(c,type,true) && isUuid(c.id));
+  let c = list.find(c=>String(c.name||'').toLowerCase()==='otros') || list.find(c=>c.type==='both') || list[0];
+  if(!c?.id) throw new Error('No valid shared category available');
+  return c.id;
+}
+
+async function ensureValidSharedTxCategory(t, selectedCatId='', selectedText='', type=txType){
+  let categoryExists = !!meta.categories.find(c=>c.id===t?.catId);
+  if(!t?.catId || !isUuid(t.catId) || !categoryExists){
+    await refreshSharedCategories();
+    if(isUuid(selectedCatId) && meta.categories.find(c=>c.id===selectedCatId)){
+      t.catId = selectedCatId;
+    }else{
+      let found = findSharedCategoryFromSelectedText(selectedText, type);
+      if(found) t.catId = found.id;
+    }
+  }
+  categoryExists = !!meta.categories.find(c=>c.id===t?.catId);
+  console.log('shared add category debug', {
     appMode,
-    selectedCatId: t?.catId,
-    isUuid: isUuid(t?.catId),
-    category: cat(t?.catId),
     currentHouseholdId: currentHousehold?.id,
+    selectedCatId,
+    selectedText,
+    formCatId: t?.catId,
+    isUuid: isUuid(t?.catId),
+    categoryExists,
     categories: meta.categories.map(c => ({id:c.id,name:c.name,emoji:c.emoji,type:c.type}))
   });
-  if(!t?.catId || !isUuid(t.catId) || !selected){
-    console.error('Invalid shared transaction category', {selectedCatId:t?.catId, appMode, currentHouseholdId:currentHousehold?.id, categories:meta.categories});
+  if(!t?.catId || !isUuid(t.catId) || !categoryExists){
+    console.error('Invalid shared transaction category', {selectedCatId, selectedText, formCatId:t?.catId, appMode, currentHouseholdId:currentHousehold?.id, categories:meta.categories});
     toast('Категория не синхронизирована. Обновите общий бюджет.');
     return false;
   }
+  let f=document.getElementById('f-cat');
+  if(f && t.catId) f.value = t.catId;
+  let e=document.getElementById('e-cat');
+  if(e && t.catId) e.value = t.catId;
   return true;
 }
 
@@ -107,10 +150,14 @@ async function refreshSharedBudget(){
   if(!isSupabaseConfigured()) return toast('Supabase no está configurado');
   try{
     await sharedLoadProfile(currentHousehold?.id || activeHouseholdId || loadActiveHousehold());
-    if(currentHousehold) await sharedLoadData();
+    if(currentHousehold){
+      await sharedLoadData();
+      await refreshSharedCategories();
+      fillCats('f-cat', txType);
+    }
     sharedLastUpdatedAt = new Date();
     renderAll();
-    toast('sharedDataUpdated');
+    toast('Общий бюджет обновлен');
   }catch(e){sharedToastError(e,'Shared refresh error')}
 }
 
@@ -171,13 +218,18 @@ async function sharedLoadData(){
   if(rates.error) throw rates.error;
   let personalSettings = personalRuntime?.meta?.settings || meta?.settings || {usdRateSource:'blue',language:'es',ratesCache:{}};
   meta = createMeta();
-  meta.categories = (cats.data || []).map(toAppCategory);
   meta.settings = JSON.parse(JSON.stringify(personalSettings));
   meta.settings.ratesCache = {};
   (rates.data || []).forEach(r=>meta.settings.ratesCache[r.currency]={rateToARS:Number(r.rate_to_ars)||0,provider:r.provider||'manual',fetchedAt:r.fetched_at,updatedAt:r.updated_at});
   transactions = (txs.data || []).map(toAppTx);
   meta.availableMonths = [...new Set(transactions.map(monthKey).filter(Boolean))].sort();
-  syncSharedCategoryDropdowns();
+  let initialCategories = (cats.data || []).map(toAppCategory).filter(c=>isUuid(c.id));
+  meta.categories = initialCategories;
+  if(!initialCategories.length){
+    await ensureSharedDefaultCategories();
+  }
+  await refreshSharedCategories();
+  fillCats('f-cat', txType);
 }
 
 async function sharedSaveMeta(){
@@ -219,7 +271,8 @@ async function switchAppMode(mode){
       if(!currentHousehold) return;
     }
     await sharedLoadData();
-    syncSharedCategoryDropdowns();
+    await refreshSharedCategories();
+    fillCats('f-cat', txType);
     appMode = 'shared';
     rememberMode('shared');
     renderAll();
@@ -248,7 +301,8 @@ async function createSharedHousehold(autoSwitch=false){
     await sharedLoadHouseholdMeta();
     if(autoSwitch){
       await sharedLoadData();
-      syncSharedCategoryDropdowns();
+      await refreshSharedCategories();
+      fillCats('f-cat', txType);
       appMode = 'shared';
       rememberMode('shared');
     }
@@ -299,7 +353,8 @@ async function joinSharedHousehold(){
     rememberActiveHousehold(r.data);
     await sharedLoadProfile(r.data);
     await sharedLoadData();
-    syncSharedCategoryDropdowns();
+    await refreshSharedCategories();
+    fillCats('f-cat', txType);
     appMode = 'shared';
     rememberMode('shared');
     renderAll();
@@ -346,8 +401,11 @@ function renderSharedAccess(){
 }
 
 async function sharedAddTx(){
+  const select = document.getElementById('f-cat');
+  const selectedCatId = select?.value || '';
+  const selectedText = select?.options?.[select.selectedIndex]?.textContent || '';
   let t = formTx('f',txType); if(!t) return;
-  if(!validateSharedTxCategory(t)) return;
+  if(!await ensureValidSharedTxCategory(t, selectedCatId, selectedText, txType)) return;
   let client = sharedClient();
   try{
     let r = await client.from('shared_transactions').insert({...txToDb(t),created_by:sharedUser.id}).select('*').single();
@@ -373,8 +431,11 @@ async function sharedDeleteTx(id){
 async function sharedSaveEdit(){
   let i = transactions.findIndex(t=>sharedTxId(t.id)===sharedTxId(editId));
   if(i<0) return;
+  const select = document.getElementById('e-cat');
+  const selectedCatId = select?.value || '';
+  const selectedText = select?.options?.[select.selectedIndex]?.textContent || '';
   let t = formTx('e',editType,{id:transactions[i].id}); if(!t) return;
-  if(!validateSharedTxCategory(t)) return;
+  if(!await ensureValidSharedTxCategory(t, selectedCatId, selectedText, editType)) return;
   let client = sharedClient();
   try{
     let r = await client.from('shared_transactions').update(txToDb(t)).eq('id', sharedTxId(t.id)).eq('household_id', currentHousehold.id).select('*').single();
@@ -387,7 +448,17 @@ async function sharedCreateCategory(){
   let emoji=document.getElementById('new-cat-emoji').value.trim()||'📦',name=document.getElementById('new-cat-name').value.trim(),type=document.getElementById('new-cat-type').value,budget=Number(document.getElementById('new-cat-budget').value)||0;
   if(!name)return toast('Ingresa un nombre');
   let client=sharedClient();
-  try{let r=await client.from('shared_categories').insert({household_id:currentHousehold.id,emoji,name,type,budget:Math.max(0,budget),archived:false}).select('*').single();if(r.error)throw r.error;meta.categories.push(toAppCategory(r.data));document.getElementById('new-cat-emoji').value='';document.getElementById('new-cat-name').value='';document.getElementById('new-cat-budget').value='';renderAll();toast('Categoría creada')}catch(e){sharedToastError(e)}
+  try{
+    let r=await client.from('shared_categories').insert({household_id:currentHousehold.id,emoji,name,type,budget:Math.max(0,budget),archived:false}).select('*').single();
+    if(r.error)throw r.error;
+    let inserted=toAppCategory(r.data);
+    await refreshSharedCategories(inserted.id);
+    document.getElementById('new-cat-emoji').value='';document.getElementById('new-cat-name').value='';document.getElementById('new-cat-budget').value='';
+    let f=document.getElementById('f-cat');if(f)f.value=inserted.id;
+    renderAll();
+    f=document.getElementById('f-cat');if(f)f.value=inserted.id;
+    toast('Categoría creada')
+  }catch(e){sharedToastError(e)}
 }
 
 async function sharedSaveCategory(id){
@@ -423,7 +494,7 @@ async function copyPersonalToShared(){
     for(let pt of data.transactions || []){
       let sig=[pt.type,pt.desc,pt.date,pt.amountOriginal,pt.currency,pt.rateToARS,(data.categories||[]).find(c=>c.id===pt.catId)?.name||''].join('|');
       if(existingSig.has(sig)) continue;
-      rows.push({household_id:currentHousehold.id,created_by:sharedUser.id,type:pt.type,desc:pt.desc,category_id:catMap[pt.catId]||null,date:pt.date,amount_original:pt.amountOriginal,currency:pt.currency,rate_to_ars:pt.rateToARS,amount_ars:pt.amountARS,rate_provider:pt.rateProvider,rate_fetched_at:pt.rateFetchedAt});
+      rows.push({household_id:currentHousehold.id,created_by:sharedUser.id,type:pt.type,desc:pt.desc,category_id:catMap[pt.catId]||sharedFallbackCategoryId(pt.type),date:pt.date,amount_original:pt.amountOriginal,currency:pt.currency,rate_to_ars:pt.rateToARS,amount_ars:pt.amountARS,rate_provider:pt.rateProvider,rate_fetched_at:pt.rateFetchedAt});
     }
     let copied=0;
     if(rows.length){let r=await client.from('shared_transactions').insert(rows).select('*');if(r.error)throw r.error;copied=r.data.length;transactions.unshift(...r.data.map(toAppTx));}
@@ -443,7 +514,7 @@ async function sharedImportData(d){
   let insertedCats=[],catMap={};
   if(cats.length){let cr=await client.from('shared_categories').insert(cats.map(c=>({household_id:currentHousehold.id,emoji:c.emoji,name:c.name,type:c.type,budget:c.budget,archived:c.archived}))).select('*');if(cr.error)throw cr.error;insertedCats=cr.data.map(toAppCategory);cats.forEach((c,i)=>catMap[c.id]=insertedCats[i].id)}
   let insertedTx=[];
-  if(txs.length){let tr=await client.from('shared_transactions').insert(txs.map(t=>({household_id:currentHousehold.id,created_by:sharedUser.id,type:t.type,desc:t.desc,category_id:catMap[t.catId]||null,date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}))).select('*');if(tr.error)throw tr.error;insertedTx=tr.data.map(toAppTx)}
+  if(txs.length){let tr=await client.from('shared_transactions').insert(txs.map(t=>({household_id:currentHousehold.id,created_by:sharedUser.id,type:t.type,desc:t.desc,category_id:catMap[t.catId]||sharedFallbackCategoryId(t.type),date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}))).select('*');if(tr.error)throw tr.error;insertedTx=tr.data.map(toAppTx)}
   meta.categories=insertedCats;transactions=insertedTx;meta.availableMonths=[...new Set(transactions.map(monthKey).filter(Boolean))].sort();
   let rates=d.ratesCache||d.settings?.ratesCache||{};meta.settings.ratesCache=rates;await sharedSaveMeta();renderAll();toast('Importación lista');
 }
