@@ -40,7 +40,7 @@ async function sharedLoadProfile(){
 async function sharedLoadHouseholdMeta(){
   let client = sharedClient();
   if(!client || !currentHousehold) return;
-  let members = await client.from('household_members').select('role, app_users(id,tg_id,first_name,username)').eq('household_id', currentHousehold.id).order('created_at');
+  let members = await client.from('household_members').select('role, app_users(id,tg_id,first_name,username)').eq('household_id', currentHousehold.id).order('joined_at');
   if(members.error) throw members.error;
   sharedMembers = members.data || [];
   let invites = await client.from('household_invites').select('code,expires_at,used_at').eq('household_id', currentHousehold.id).is('used_at', null).order('created_at', {ascending:false}).limit(1);
