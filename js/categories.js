@@ -12,7 +12,7 @@ function normCat(c){return{id:c.id||mkCatId(c.name||'categoria'),emoji:c.emoji||
 
 function allowed(c,t,arch=false){return c&&(arch||!c.archived)&&(c.type==='both'||c.type===t)}
 
-function fillCats(id,t,sel=''){let s=document.getElementById(id),arr=meta.categories.filter(c=>allowed(c,t));let keep=sel&&meta.categories.find(c=>c.id===sel);if(keep&&!arr.find(c=>c.id===keep.id))arr=[keep,...arr];s.innerHTML=arr.map(c=>'<option value="'+escapeHTML(c.id)+'">'+escapeHTML(label(c)+(c.archived?' (archivada)':''))+'</option>').join('');s.value=arr.find(c=>c.id===sel)?.id||arr[0]?.id||''}
+function fillCats(id,t,sel=''){let s=document.getElementById(id);if(!s)return;let arr=meta.categories.filter(c=>allowed(c,t));let keep=sel&&meta.categories.find(c=>c.id===sel);if(keep&&!arr.find(c=>c.id===keep.id))arr=[keep,...arr];if(!arr.length){let shared=typeof isSharedMode==='function'&&isSharedMode();let text=shared?'Категории общего бюджета не загружены':(typeof lang==='function'&&lang()==='es'?'Sin categorías':'Нет категорий');s.innerHTML='<option value="" disabled selected>'+escapeHTML(text)+'</option>';s.value='';return}s.innerHTML=arr.map(c=>'<option value="'+escapeHTML(c.id)+'">'+escapeHTML(label(c)+(c.archived?' (archivada)':''))+'</option>').join('');s.value=arr.find(c=>c.id===sel)?.id||arr[0]?.id||''}
 
 function setType(t){txType=t;document.getElementById('pill-expense').classList.toggle('active',t==='expense');document.getElementById('pill-income').classList.toggle('active',t==='income');fillCats('f-cat',t)}
 
