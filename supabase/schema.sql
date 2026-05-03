@@ -12,7 +12,7 @@ create table if not exists public.app_users (
 create table if not exists public.households (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  base_currency text default 'ARS',
+  base_currency text not null default 'ARS',
   created_by uuid references public.app_users(id),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -22,7 +22,7 @@ create table if not exists public.household_members (
   household_id uuid references public.households(id) on delete cascade,
   user_id uuid references public.app_users(id) on delete cascade,
   role text check (role in ('owner','member')) default 'member',
-  created_at timestamptz default now(),
+  joined_at timestamptz default now(),
   primary key (household_id, user_id)
 );
 
@@ -172,7 +172,7 @@ returns text
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
@@ -188,9 +188,9 @@ begin
 
   return invite_code;
 end;
-$;
+$$;
 
-create or replace function public.join_household_by_invite(invite_code text)
+create or replace function public.join_household_by_code(code_text text)
 returns uuid
 language plpgsql
 security definer
@@ -210,8 +210,8 @@ begin
   select *
   into inv
   from public.household_invites
-  where code = invite_code
-    and used_at is null
+  where code = code_text
+    and (used_at is null or used_by = auth.uid())
     and (expires_at is null or expires_at > now())
   limit 1;
 
@@ -219,9 +219,10 @@ begin
     raise exception 'invalid invite';
   end if;
 
-  insert into public.household_members (household_id, user_id, role)
-  values (inv.household_id, auth.uid(), 'member')
-  on conflict (household_id, user_id) do nothing;
+  insert into public.household_members (household_id, user_id, role, joined_at)
+  values (inv.household_id, auth.uid(), 'member', now())
+  on conflict (household_id, user_id) do update
+    set role = case when public.household_members.role = 'owner' then 'owner' else 'member' end;
 
   update public.household_invites
   set used_by = auth.uid(),
@@ -229,6 +230,17 @@ begin
   where id = inv.id;
 
   return inv.household_id;
+end;
+$$;
+
+create or replace function public.join_household_by_invite(invite_code text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return public.join_household_by_code(invite_code);
 end;
 $$;
 
