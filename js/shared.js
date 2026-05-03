@@ -62,6 +62,12 @@ async function refreshSharedCategories(preferredCatId=''){
   let client = sharedClient();
   if(!client || !currentHousehold?.id) return [];
   let res = await client.from('shared_categories').select('*').eq('household_id', currentHousehold.id).order('created_at');
+  console.log('DEBUG refreshSharedCategories result', {
+    currentHouseholdId: currentHousehold?.id,
+    error: res.error,
+    rowsLength: res.data?.length,
+    rows: res.data
+  });
   if(res.error) throw res.error;
   let rows = res.data || [];
   if(!rows.length){
@@ -87,6 +93,41 @@ async function refreshSharedCategories(preferredCatId=''){
   return meta.categories;
 }
 
+window.debugSharedState = async function(){
+  const client = sharedClient();
+  console.log('DEBUG shared state BEFORE', {
+    appMode,
+    currentHousehold,
+    activeHouseholdId,
+    localActiveHouseholdId: localStorage.getItem('fin_active_household_id'),
+    sharedUser,
+    metaCategoriesCount: meta?.categories?.length,
+    metaCategories: meta?.categories,
+    fCatOptions: [...(document.getElementById('f-cat')?.options || [])].map(o => ({value:o.value,text:o.textContent}))
+  });
+
+  if(client && currentHousehold?.id){
+    const res = await client.from('shared_categories')
+      .select('*')
+      .eq('household_id', currentHousehold.id)
+      .order('created_at');
+
+    console.log('DEBUG direct shared_categories query', {
+      error: res.error,
+      rowsLength: res.data?.length,
+      rows: res.data
+    });
+  }
+
+  await refreshSharedCategories();
+  fillCats('f-cat', txType);
+
+  console.log('DEBUG shared state AFTER', {
+    metaCategoriesCount: meta?.categories?.length,
+    metaCategories: meta?.categories,
+    fCatOptions: [...(document.getElementById('f-cat')?.options || [])].map(o => ({value:o.value,text:o.textContent}))
+  });
+};
 function findSharedCategoryFromSelectedText(selectedText, type){
   let text = String(selectedText || '').replace(/\(archivada\)$/i,'').trim().toLowerCase();
   if(!text) return null;
@@ -242,6 +283,12 @@ async function sharedLoadData(){
     client.from('shared_transactions').select('*').eq('household_id', currentHousehold.id).order('date', {ascending:false}).order('created_at', {ascending:false}),
     client.from('shared_rates_cache').select('*').eq('household_id', currentHousehold.id)
   ]);
+  console.log('DEBUG sharedLoadData categories', {
+    currentHouseholdId: currentHousehold?.id,
+    catsError: cats.error,
+    catsRows: cats.data?.length,
+    catsData: cats.data
+  });
   if(cats.error) throw cats.error;
   if(txs.error) throw txs.error;
   if(rates.error) throw rates.error;
@@ -252,8 +299,9 @@ async function sharedLoadData(){
   (rates.data || []).forEach(r=>meta.settings.ratesCache[r.currency]={rateToARS:Number(r.rate_to_ars)||0,provider:r.provider||'manual',fetchedAt:r.fetched_at,updatedAt:r.updated_at});
   transactions = (txs.data || []).map(toAppTx);
   meta.availableMonths = [...new Set(transactions.map(monthKey).filter(Boolean))].sort();
-  let initialCategories = (cats.data || []).map(toAppCategory).filter(c=>isUuid(c.id));
-  if(!initialCategories.length){
+  const loadedCategories = (cats.data || []).map(toAppCategory).filter(c=>isUuid(c.id));
+  meta.categories = loadedCategories;
+  if(!meta.categories.length){
     await ensureSharedDefaultCategories();
   }
   await refreshSharedCategories();
@@ -293,6 +341,8 @@ async function switchAppMode(mode){
   if(!isSupabaseConfigured()) return toast('Supabase no está configurado');
   try{
     personalRuntime = {...personalRuntime, meta, transactions:[...transactions]};
+    appMode = 'shared';
+    rememberMode('shared');
     await sharedLoadProfile();
     if(!currentHousehold){
       await createSharedHousehold(true);
@@ -300,9 +350,7 @@ async function switchAppMode(mode){
     }
     await sharedLoadData();
     await refreshSharedCategories();
-    fillCats('f-cat', txType);
-    appMode = 'shared';
-    rememberMode('shared');
+    syncSharedCategoryDropdowns();
     renderAll();
   }catch(e){sharedToastError(e)}
 }
@@ -328,11 +376,11 @@ async function createSharedHousehold(autoSwitch=false){
     await createSharedInvite();
     await sharedLoadHouseholdMeta();
     if(autoSwitch){
-      await sharedLoadData();
-      await refreshSharedCategories();
-      fillCats('f-cat', txType);
       appMode = 'shared';
       rememberMode('shared');
+      await sharedLoadData();
+      await refreshSharedCategories();
+      syncSharedCategoryDropdowns();
     }
     renderAll();
     toast('sharedCreated');
@@ -381,12 +429,12 @@ async function joinSharedHousehold(){
     if(r.error) throw r.error;
     if(!r.data) throw new Error('join_household_by_code returned empty household id');
     rememberActiveHousehold(r.data);
+    appMode = 'shared';
+    rememberMode('shared');
     await sharedLoadProfile(r.data);
     await sharedLoadData();
     await refreshSharedCategories();
-    fillCats('f-cat', txType);
-    appMode = 'shared';
-    rememberMode('shared');
+    syncSharedCategoryDropdowns();
     renderAll();
     toast('sharedJoined');
   }catch(e){sharedToastError(e,'Join invite error')}
@@ -566,5 +614,5 @@ function installSharedHooks(){
   window.saveBudgetLimit=async function(id){return isSharedMode()?await sharedSaveBudgetLimit(id):await personalRuntime.saveBudgetLimit(id)};
   window.exportData=async function(){return isSharedMode()?await sharedExportData():await personalRuntime.exportData()};
   window.importJSONFile=function(e){if(!isSharedMode())return personalRuntime.importJSONFile(e);let f=e.target.files?.[0];e.target.value='';if(!f)return;if(!confirm(t('confirmImport')))return;let rd=new FileReader();rd.onload=async()=>{try{await sharedImportData(JSON.parse(rd.result))}catch(err){sharedToastError(err)}};rd.readAsText(f)};
-  window.renderAll=function(){personalRuntime.renderAll();renderSharedAccess();renderModeIndicators();renderModeEmptyStates();syncSharedCategoryDropdowns()};
+  window.renderAll=function(){personalRuntime.renderAll();if(isSharedMode())syncSharedCategoryDropdowns();renderSharedAccess();renderModeIndicators();renderModeEmptyStates()};
 }
