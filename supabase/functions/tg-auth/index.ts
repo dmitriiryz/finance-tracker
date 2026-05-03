@@ -1,7 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""; // Server-side only. Never put it in frontend code.
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+// Server-side only. Never put it in frontend code.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,7 +26,7 @@ function parseTelegramUserFromInitData(initData: string){
 }
 
 function normalizeTelegramUser(user: any){
-  const id = user?.id || user?.telegram_id;
+  const id = user?.id || user?.tg_id;
   if(!id) return null;
   return {
     id,
@@ -46,10 +47,10 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization") || "";
     const token = authHeader.replace("Bearer ", "");
-    const {initData, telegramUser} = await req.json();
+    const {initData} = await req.json();
     console.log("tg-auth initData exists:", Boolean(initData));
 
-    const tgUser = normalizeTelegramUser(parseTelegramUserFromInitData(initData)) || normalizeTelegramUser(telegramUser);
+    const tgUser = normalizeTelegramUser(parseTelegramUserFromInitData(initData));
     console.log("tg-auth telegram user:", tgUser?.id || null);
     if(!tgUser) return jsonResponse({error:"Telegram user is missing"}, 400);
 
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
 
     const appUser = {
       id:user.id,
-      telegram_id:tgUser.id,
+      tg_id:tgUser.id,
       first_name:tgUser.first_name,
       username:tgUser.username,
       updated_at:new Date().toISOString()
