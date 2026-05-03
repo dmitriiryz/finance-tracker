@@ -58,6 +58,20 @@ function syncSharedCategoryDropdowns(preferredCatId=''){
   renderSharedCategoryLoadAction();
 }
 
+async function ensureSharedCategoriesReady(preferredCatId=''){
+  if(!isSharedMode() || !currentHousehold?.id) return meta.categories || [];
+  if(!meta.categories?.length){
+    await ensureSharedDefaultCategories();
+    await refreshSharedCategories(preferredCatId);
+  }
+  syncSharedCategoryDropdowns(preferredCatId);
+  if(!meta.categories?.length){
+    console.error('Shared categories are still empty after ensure', {currentHouseholdId:currentHousehold?.id});
+    toast('Категории общего бюджета не загружены');
+  }
+  return meta.categories || [];
+}
+
 async function refreshSharedCategories(preferredCatId=''){
   let client = sharedClient();
   if(!client || !currentHousehold?.id) return [];
@@ -254,7 +268,12 @@ async function sharedLoadProfile(preferredHouseholdId=null){
   let mem = await client.from('household_members').select('role, joined_at, households(id,name,base_currency,created_by,created_at,updated_at)').eq('user_id', sharedUser.id).order('joined_at', {ascending:false});
   if(mem.error) throw mem.error;
   let rows = mem.data || [];
-  let picked = rows.find(r=>r.households?.id === wanted) || rows[0] || null;
+  let picked = rows.find(r=>r.households?.id === wanted) || null;
+  if(wanted && !picked){
+    console.warn('Saved active household is not available, clearing it', {wanted, households: rows.map(r=>r.households?.id)});
+    rememberActiveHousehold(null);
+  }
+  picked = picked || rows[0] || null;
   currentHousehold = picked?.households || null;
   if(currentHousehold) rememberActiveHousehold(currentHousehold.id);
   console.log('shared currentHousehold:', currentHousehold?.id || null);
@@ -305,7 +324,7 @@ async function sharedLoadData(){
     await ensureSharedDefaultCategories();
   }
   await refreshSharedCategories();
-  fillCats('f-cat', txType);
+  await ensureSharedCategoriesReady();
 }
 
 async function sharedSaveMeta(){
@@ -378,11 +397,15 @@ async function createSharedHousehold(autoSwitch=false){
     if(autoSwitch){
       appMode = 'shared';
       rememberMode('shared');
+      rememberActiveHousehold(currentHousehold.id);
       await sharedLoadData();
       await refreshSharedCategories();
+      await ensureSharedCategoriesReady();
       syncSharedCategoryDropdowns();
+      renderAll();
+    }else{
+      renderAll();
     }
-    renderAll();
     toast('sharedCreated');
   }catch(e){sharedToastError(e,'Shared setup error')}
 }
@@ -456,6 +479,13 @@ async function copySharedInvite(){
   try{await navigator.clipboard.writeText(sharedInviteCode);toast('sharedCodeCopied')}catch{prompt(t('sharedInviteCode'), sharedInviteCode)}
 }
 
+function resetSharedMode(){
+  try{
+    localStorage.removeItem('fin_active_household_id');
+    localStorage.setItem('fin_app_mode', 'personal');
+  }catch(e){console.warn(e)}
+  location.reload();
+}
 function renderSharedAccess(){
   let more = document.getElementById('page-more');
   if(!more) return;
@@ -466,12 +496,15 @@ function renderSharedAccess(){
     card = document.getElementById('shared-card');
   }
   let mode = '<div class="type-row shared-mode-switch" style="margin-bottom:10px"><button class="type-pill '+(!isSharedMode()?'active mode-active':'')+'" onclick="switchAppMode(\'personal\')">'+escapeHTML(t('sharedPersonal'))+(!isSharedMode()?'<span class="mode-status">'+escapeHTML(t('sharedNowActive'))+'</span>':'')+'</button><button class="type-pill '+(isSharedMode()?'active mode-active':'')+'" onclick="switchAppMode(\'shared\')">'+escapeHTML(t('sharedShared'))+(isSharedMode()?'<span class="mode-status">'+escapeHTML(t('sharedNowActive'))+'</span>':'')+'</button></div>';
-  if(!isSupabaseConfigured()){
+  let resetDebug = document.getElementById('shared-reset-debug');
+  if(!resetDebug){
+    card.insertAdjacentHTML('afterend','<div class="actions-row" id="shared-reset-debug" style="margin:8px 0 0"><button class="btn ghost" onclick="resetSharedMode()">Сбросить общий режим</button></div>');
+  }  if(!isSupabaseConfigured()){
     card.innerHTML='<div class="section-label" style="margin-top:0">'+escapeHTML(t('sharedBudget'))+'</div><div class="note">Supabase no está configurado</div><div class="actions-row"><button class="btn ghost" disabled>'+escapeHTML(t('sharedPersonal'))+'</button><button class="btn ghost" disabled>'+escapeHTML(t('sharedShared'))+'</button></div>';
     return;
   }
   if(!currentHousehold){
-    card.innerHTML='<div class="section-label" style="margin-top:0">'+escapeHTML(t('sharedBudget'))+'</div>'+mode+'<button class="btn full" onclick="createSharedHousehold()">'+escapeHTML(t('sharedCreate'))+'</button><div class="form-row" style="margin-top:10px"><div class="field"><label>'+escapeHTML(t('sharedInviteCode'))+'</label><input id="shared-invite-input" placeholder="ABC123"></div><button class="btn" onclick="joinSharedHousehold()" style="align-self:end">'+escapeHTML(t('sharedJoin'))+'</button></div>';
+    card.innerHTML='<div class="section-label" style="margin-top:0">'+escapeHTML(t('sharedBudget'))+'</div>'+mode+'<button class="btn full" onclick="createSharedHousehold(true)">'+escapeHTML(t('sharedCreate'))+'</button><div class="form-row" style="margin-top:10px"><div class="field"><label>'+escapeHTML(t('sharedInviteCode'))+'</label><input id="shared-invite-input" placeholder="ABC123"></div><button class="btn" onclick="joinSharedHousehold()" style="align-self:end">'+escapeHTML(t('sharedJoin'))+'</button></div>';
     return;
   }
   let members = sharedMembers.map(m=>escapeHTML(m.app_users?.first_name || m.app_users?.username || String(m.app_users?.tg_id || t('sharedUser')))+' · '+escapeHTML(t(m.role==='owner'?'sharedOwner':'sharedMember'))).join('<br>') || '—';
