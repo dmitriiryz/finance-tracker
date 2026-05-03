@@ -2,17 +2,15 @@ const DEF=[{id:'cat_comida',emoji:'🍔',name:'Comida',type:'expense',budget:150
 
 const OLDMAP={'🍔 Comida':'cat_comida','🚇 Transporte':'cat_transporte','🎬 Entretenimiento':'cat_entretenimiento','🏠 Servicios':'cat_servicios','👗 Ropa':'cat_ropa','💊 Salud':'cat_salud','💰 Salario':'cat_salario','📦 Otros':'cat_otros'};
 
-function uncategorizedCat(){return{id:'uncategorized',emoji:'📦',name:(typeof lang==='function'&&lang()==='es'?'Sin categoría':'Без категории'),type:'both',budget:0,archived:false}}
+function cat(id){return meta.categories.find(c=>c.id===id)||meta.categories.find(c=>c.id==='cat_otros')||meta.categories[0]}
 
-function cat(id){return meta.categories.find(c=>c.id===id)||uncategorizedCat()}
-
-function label(c){let x=c||uncategorizedCat();return x.emoji+' '+x.name}
+function label(c){return c?c.emoji+' '+c.name:'📦 Otros'}
 
 function normCat(c){return{id:c.id||mkCatId(c.name||'categoria'),emoji:c.emoji||'📦',name:c.name||'Categoría',type:c.type||'expense',budget:Math.max(0,Number(c.budget)||0),archived:!!c.archived}}
 
 function allowed(c,t,arch=false){return c&&(arch||!c.archived)&&(c.type==='both'||c.type===t)}
 
-function fillCats(id,t,sel=''){let s=document.getElementById(id);if(!s)return;let arr=meta.categories.filter(c=>allowed(c,t));let keep=sel&&meta.categories.find(c=>c.id===sel);if(keep&&!arr.find(c=>c.id===keep.id))arr=[keep,...arr];if(!arr.length){let shared=typeof isSharedMode==='function'&&isSharedMode();let text=shared?'Категории общего бюджета не загружены':(typeof lang==='function'&&lang()==='es'?'Sin categorías':'Нет категорий');s.innerHTML='<option value="" disabled selected>'+escapeHTML(text)+'</option>';s.value='';return}s.innerHTML=arr.map(c=>'<option value="'+escapeHTML(c.id)+'">'+escapeHTML(label(c)+(c.archived?' (archivada)':''))+'</option>').join('');s.value=arr.find(c=>c.id===sel)?.id||arr[0]?.id||''}
+function fillCats(id,t,sel=''){let s=document.getElementById(id),arr=meta.categories.filter(c=>allowed(c,t));let keep=sel&&meta.categories.find(c=>c.id===sel);if(keep&&!arr.find(c=>c.id===keep.id))arr=[keep,...arr];s.innerHTML=arr.map(c=>'<option value="'+escapeHTML(c.id)+'">'+escapeHTML(label(c)+(c.archived?' (archivada)':''))+'</option>').join('');s.value=arr.find(c=>c.id===sel)?.id||arr[0]?.id||''}
 
 function setType(t){txType=t;document.getElementById('pill-expense').classList.toggle('active',t==='expense');document.getElementById('pill-income').classList.toggle('active',t==='income');fillCats('f-cat',t)}
 

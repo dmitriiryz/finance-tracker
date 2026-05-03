@@ -6,7 +6,6 @@ let sharedInviteCode = '';
 let activeHouseholdId = null;
 let personalRuntime = null;
 let sharedHooksInstalled = false;
-let sharedLastUpdatedAt = null;
 
 function isSharedMode(){return appMode === 'shared'}
 function sharedClient(){return getSupabaseClient ? getSupabaseClient() : null}
@@ -20,229 +19,14 @@ function rememberActiveHousehold(id){activeHouseholdId=id||null;try{id?localStor
 function loadActiveHousehold(){try{return localStorage.getItem('fin_active_household_id')||null}catch{return null}}
 
 function toAppCategory(r){return{id:r.id,emoji:r.emoji||'📦',name:r.name||'Categoria',type:r.type||'expense',budget:Number(r.budget)||0,archived:!!r.archived}}
-function toAppTx(r){return{id:r.id,type:r.type,desc:r.desc,catId:r.category_id||'uncategorized',date:r.date,amountOriginal:Number(r.amount_original)||0,currency:r.currency||'ARS',rateToARS:Number(r.rate_to_ars)||1,amountARS:Number(r.amount_ars)||0,rateProvider:r.rate_provider||'',rateFetchedAt:r.rate_fetched_at||null,createdBy:r.created_by||null,authorName:sharedMemberNameById(r.created_by)}}
-function txToDb(t){
-  if(!isUuid(t.catId)) throw new Error('Invalid shared category id');
-  return{household_id:currentHousehold.id,type:t.type,desc:t.desc,category_id:t.catId,date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}
-}
+function toAppTx(r){return{id:r.id,type:r.type,desc:r.desc,catId:r.category_id||'cat_otros',date:r.date,amountOriginal:Number(r.amount_original)||0,currency:r.currency||'ARS',rateToARS:Number(r.rate_to_ars)||1,amountARS:Number(r.amount_ars)||0,rateProvider:r.rate_provider||'',rateFetchedAt:r.rate_fetched_at||null}}
+function txToDb(t){return{household_id:currentHousehold.id,type:t.type,desc:t.desc,category_id:isUuid(t.catId)?t.catId:null,date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}}
 function catToDb(c){return{household_id:currentHousehold.id,emoji:c.emoji||'📦',name:c.name,type:c.type,budget:Number(c.budget)||0,archived:!!c.archived}}
-
-function extendSharedI18N(){
-  if(typeof I18N === 'undefined') return;
-  Object.assign(I18N.es, {
-    sharedBudget:'Presupuesto compartido', sharedPersonal:'Personal', sharedShared:'Compartido', sharedCreate:'Crear presupuesto compartido', sharedInviteCode:'Código de invitación', sharedJoin:'Unirse', sharedHousehold:'Household', sharedCopyCode:'Copiar código', sharedCopyData:'Copiar mis datos al compartido', sharedLeave:'Salir del presupuesto compartido', sharedUser:'Usuario', sharedOwner:'owner', sharedMember:'member', sharedCodeRequired:'Código requerido', sharedJoined:'Unido al presupuesto compartido', sharedCreated:'Presupuesto compartido creado', sharedDataUpdated:'Datos actualizados', sharedRefresh:'Actualizar presupuesto compartido', sharedUpdated:'Actualizado', sharedNowActive:'Activo ahora', modePersonal:'Modo: Presupuesto personal', modeShared:'Modo: Presupuesto compartido', addPersonalHint:'La operación se guardará solo para ti', addSharedHint:'La operación se agregará al presupuesto compartido', sharedEmptyOps:'Todavía no hay operaciones en el presupuesto compartido', personalEmptyOps:'Todavía no hay operaciones personales', sharedCopyConfirm:'Tus operaciones y categorías personales se copiarán al presupuesto compartido. ¿Continuar?', sharedCopyDone:'Datos copiados al presupuesto compartido', sharedLeaveConfirm:'¿Salir del presupuesto compartido?', sharedCodeCopied:'Código copiado', sharedAddedBy:'Agregó'
-  });
-  Object.assign(I18N.ru, {
-    sharedBudget:'Общий бюджет', sharedPersonal:'Личный', sharedShared:'Общий', sharedCreate:'Создать общий бюджет', sharedInviteCode:'Код приглашения', sharedJoin:'Вступить', sharedHousehold:'Бюджет', sharedCopyCode:'Скопировать код', sharedCopyData:'Перенести мои данные в общий бюджет', sharedLeave:'Выйти из общего бюджета', sharedUser:'Пользователь', sharedOwner:'владелец', sharedMember:'участник', sharedCodeRequired:'Введите код приглашения', sharedJoined:'Вы вступили в общий бюджет', sharedCreated:'Общий бюджет создан', sharedDataUpdated:'Данные обновлены', sharedRefresh:'Обновить общий бюджет', sharedUpdated:'Обновлено', sharedNowActive:'Сейчас активно', modePersonal:'Режим: Личный бюджет', modeShared:'Режим: Общий бюджет', addPersonalHint:'Операция будет сохранена только у вас', addSharedHint:'Операция будет добавлена в общий бюджет', sharedEmptyOps:'Пока нет операций в общем бюджете', personalEmptyOps:'Пока нет личных операций', sharedCopyConfirm:'Ваши личные операции и категории будут скопированы в общий бюджет. Продолжить?', sharedCopyDone:'Данные скопированы в общий бюджет', sharedLeaveConfirm:'Выйти из общего бюджета?', sharedCodeCopied:'Код скопирован', sharedAddedBy:'Добавил(а)'
-  });
-}
-
-
-function renderSharedCategoryLoadAction(){
-  let select=document.getElementById('f-cat');
-  if(!select) return;
-  let field=select.closest('.field');
-  if(!field) return;
-  let old=document.getElementById('shared-cat-load-action');
-  if(!isSharedMode() || meta.categories.length){old?.remove();return}
-  if(!old){
-    select.insertAdjacentHTML('afterend','<div class="note" id="shared-cat-load-action">Категории общего бюджета не загружены<br><button class="btn ghost" type="button" onclick="refreshSharedBudget()" style="margin-top:8px">Обновить общий бюджет</button></div>');
-  }
-}
-
-function syncSharedCategoryDropdowns(preferredCatId=''){
-  let f=document.getElementById('f-cat');
-  if(f) fillCats('f-cat', txType, preferredCatId || (isUuid(f.value)?f.value:''));
-  let modal=document.getElementById('edit-modal'), e=document.getElementById('e-cat');
-  if(e && modal?.classList.contains('open')) fillCats('e-cat', editType, preferredCatId || (isUuid(e.value)?e.value:''));
-  renderSharedCategoryLoadAction();
-}
-
-async function refreshSharedCategories(preferredCatId=''){
-  let client = sharedClient();
-  if(!client || !currentHousehold?.id) return [];
-  let res = await client.from('shared_categories').select('*').eq('household_id', currentHousehold.id).order('created_at');
-  console.log('DEBUG refreshSharedCategories result', {
-    currentHouseholdId: currentHousehold?.id,
-    error: res.error,
-    rowsLength: res.data?.length,
-    rows: res.data
-  });
-  if(res.error) throw res.error;
-  let rows = res.data || [];
-  if(!rows.length){
-    await ensureSharedDefaultCategories();
-    res = await client.from('shared_categories').select('*').eq('household_id', currentHousehold.id).order('created_at');
-    if(res.error) throw res.error;
-    rows = res.data || [];
-  }
-  let mapped = rows.map(toAppCategory);
-  let invalid = mapped.filter(c=>!isUuid(c.id));
-  if(invalid.length) console.error('shared categories with invalid ids', invalid);
-  meta.categories = mapped.filter(c=>isUuid(c.id));
-  console.log('shared categories refreshed', {
-    currentHouseholdId: currentHousehold?.id,
-    categoriesCount: meta.categories.length,
-    categories: meta.categories.map(c => ({id:c.id,name:c.name,type:c.type,emoji:c.emoji}))
-  });
-  if(isSharedMode() && !meta.categories.length){
-    console.error('Нет категорий общего бюджета', {currentHouseholdId:currentHousehold?.id});
-    toast('Нет категорий общего бюджета');
-  }
-  syncSharedCategoryDropdowns(preferredCatId);
-  return meta.categories;
-}
-
-window.debugSharedState = async function(){
-  const client = sharedClient();
-  console.log('DEBUG shared state BEFORE', {
-    appMode,
-    currentHousehold,
-    activeHouseholdId,
-    localActiveHouseholdId: localStorage.getItem('fin_active_household_id'),
-    sharedUser,
-    metaCategoriesCount: meta?.categories?.length,
-    metaCategories: meta?.categories,
-    fCatOptions: [...(document.getElementById('f-cat')?.options || [])].map(o => ({value:o.value,text:o.textContent}))
-  });
-
-  if(client && currentHousehold?.id){
-    const res = await client.from('shared_categories')
-      .select('*')
-      .eq('household_id', currentHousehold.id)
-      .order('created_at');
-
-    console.log('DEBUG direct shared_categories query', {
-      error: res.error,
-      rowsLength: res.data?.length,
-      rows: res.data
-    });
-  }
-
-  await refreshSharedCategories();
-  fillCats('f-cat', txType);
-
-  console.log('DEBUG shared state AFTER', {
-    metaCategoriesCount: meta?.categories?.length,
-    metaCategories: meta?.categories,
-    fCatOptions: [...(document.getElementById('f-cat')?.options || [])].map(o => ({value:o.value,text:o.textContent}))
-  });
-};
-function findSharedCategoryFromSelectedText(selectedText, type){
-  let text = String(selectedText || '').replace(/\(archivada\)$/i,'').trim().toLowerCase();
-  if(!text) return null;
-  let allowedCats = meta.categories.filter(c=>allowed(c,type,true));
-  return allowedCats.find(c=>text.includes(String(c.name||'').toLowerCase())) || null;
-}
-
-function sharedFallbackCategoryId(type='expense'){
-  let list = meta.categories.filter(c=>allowed(c,type,true) && isUuid(c.id));
-  let c = list.find(c=>String(c.name||'').toLowerCase()==='otros') || list.find(c=>c.type==='both') || list[0];
-  if(!c?.id) throw new Error('No valid shared category available');
-  return c.id;
-}
-
-async function ensureValidSharedTxCategory(t, selectedCatId='', selectedText='', type=txType){
-  let categoryExists = !!meta.categories.find(c=>c.id===t?.catId);
-  if(!t?.catId || !isUuid(t.catId) || !categoryExists){
-    await refreshSharedCategories();
-    if(isUuid(selectedCatId) && meta.categories.find(c=>c.id===selectedCatId)){
-      t.catId = selectedCatId;
-    }else{
-      let found = findSharedCategoryFromSelectedText(selectedText, type);
-      if(found) t.catId = found.id;
-    }
-  }
-  categoryExists = !!meta.categories.find(c=>c.id===t?.catId);
-  console.log('shared add category debug', {
-    appMode,
-    currentHouseholdId: currentHousehold?.id,
-    selectedCatId,
-    selectedText,
-    formCatId: t?.catId,
-    isUuid: isUuid(t?.catId),
-    categoryExists,
-    categories: meta.categories.map(c => ({id:c.id,name:c.name,emoji:c.emoji,type:c.type}))
-  });
-  if(!t?.catId || !isUuid(t.catId) || !categoryExists){
-    console.error('Invalid shared transaction category', {selectedCatId, selectedText, formCatId:t?.catId, appMode, currentHouseholdId:currentHousehold?.id, categories:meta.categories});
-    toast('Категория не синхронизирована. Обновите общий бюджет.');
-    return false;
-  }
-  let f=document.getElementById('f-cat');
-  if(f && t.catId) f.value = t.catId;
-  let e=document.getElementById('e-cat');
-  if(e && t.catId) e.value = t.catId;
-  return true;
-}
-
-function sharedMemberNameById(id){
-  if(!id) return '';
-  let member = sharedMembers.find(m=>m.app_users?.id===id);
-  return member?.app_users?.first_name || member?.app_users?.username || '';
-}
-
-function sharedModeLabel(){
-  return isSharedMode() ? t('modeShared') + (currentHousehold?.name ? ' · ' + currentHousehold.name : '') : t('modePersonal');
-}
-
-function sharedAddHint(){
-  return isSharedMode() ? t('addSharedHint') + ': ' + (currentHousehold?.name || t('sharedBudget')) : t('addPersonalHint');
-}
-
-function upsertAfterHeader(pageId, id, className, text){
-  let page = document.getElementById(pageId), head = page?.querySelector('.page-header');
-  if(!page || !head) return;
-  let el = document.getElementById(id);
-  if(!el){head.insertAdjacentHTML('afterend','<div id="'+id+'" class="'+className+'"></div>');el=document.getElementById(id)}
-  el.textContent = text;
-}
-
-function renderModeIndicators(){
-  upsertAfterHeader('page-home','home-mode-indicator','mode-indicator',sharedModeLabel());
-  upsertAfterHeader('page-add','add-mode-indicator','mode-indicator',sharedModeLabel());
-  upsertAfterHeader('page-more','more-mode-indicator','mode-indicator',sharedModeLabel());
-  upsertAfterHeader('page-add','add-mode-hint','mode-add-hint',sharedAddHint());
-}
-
-function renderModeEmptyStates(){
-  if((transactions || []).length) return;
-  let text = isSharedMode() ? t('sharedEmptyOps') : t('personalEmptyOps');
-  ['recent-list','history-list'].forEach(id=>{let e=document.querySelector('#'+id+' .empty');if(e)e.textContent=text});
-}
-
-function sharedUpdatedText(){
-  if(!sharedLastUpdatedAt) return '';
-  return t('sharedUpdated') + ': ' + sharedLastUpdatedAt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-}
-
-async function refreshSharedBudget(){
-  if(!isSupabaseConfigured()) return toast('Supabase no está configurado');
-  try{
-    await sharedLoadProfile(currentHousehold?.id || activeHouseholdId || loadActiveHousehold());
-    if(currentHousehold){
-      await sharedLoadData();
-      await refreshSharedCategories();
-      fillCats('f-cat', txType);
-    }
-    sharedLastUpdatedAt = new Date();
-    renderAll();
-    toast('Общий бюджет обновлен');
-  }catch(e){sharedToastError(e,'Shared refresh error')}
-}
-
-function sharedTxHTML(tx,a){
-  let c=cat(tx.catId),sign=tx.type==='income'?'+':'−',orig=sign+money(tx.amountOriginal,tx.currency),ap=tx.currency==='ARS'?'':' ≈ '+fmt(tx.amountARS),id=escapeHTML(String(tx.id));
-  let author=isSharedMode()&&tx.authorName?' · <span class="tx-author">'+escapeHTML(t('sharedAddedBy')+': '+tx.authorName)+'</span>':'';
-  return '<div class="tx-item"><div class="tx-icon '+escapeHTML(tx.type)+'">'+escapeHTML(c?.emoji||'📦')+'</div><div class="tx-info"><div class="tx-desc">'+escapeHTML(tx.desc)+'</div><div class="tx-meta">'+escapeHTML(label(c))+' · '+escapeHTML(tx.date)+(c?.archived?' · archivada':'')+author+'</div></div><div class="tx-amount '+escapeHTML(tx.type)+'">'+escapeHTML(orig+ap)+'</div>'+(a?'<div><button class="tx-btn" onclick="openEdit(\''+id+'\')">✎</button><button class="tx-btn" onclick="delTx(\''+id+'\')">✕</button></div>':'')+'</div>';
-}
-
 
 async function sharedEnsureAuth(){
   if(!isSupabaseConfigured()) return null;
   if(sharedUser) return sharedUser;
   sharedUser = await ensureSupabaseAuth();
-  console.log('shared stable app user:', sharedUser?.id || null, sharedUser?.tg_id || null);
   return sharedUser;
 }
 
@@ -257,7 +41,6 @@ async function sharedLoadProfile(preferredHouseholdId=null){
   let picked = rows.find(r=>r.households?.id === wanted) || rows[0] || null;
   currentHousehold = picked?.households || null;
   if(currentHousehold) rememberActiveHousehold(currentHousehold.id);
-  console.log('shared currentHousehold:', currentHousehold?.id || null);
   sharedMembers = [];
   sharedInviteCode = '';
   if(currentHousehold) await sharedLoadHouseholdMeta();
@@ -283,29 +66,18 @@ async function sharedLoadData(){
     client.from('shared_transactions').select('*').eq('household_id', currentHousehold.id).order('date', {ascending:false}).order('created_at', {ascending:false}),
     client.from('shared_rates_cache').select('*').eq('household_id', currentHousehold.id)
   ]);
-  console.log('DEBUG sharedLoadData categories', {
-    currentHouseholdId: currentHousehold?.id,
-    catsError: cats.error,
-    catsRows: cats.data?.length,
-    catsData: cats.data
-  });
   if(cats.error) throw cats.error;
   if(txs.error) throw txs.error;
   if(rates.error) throw rates.error;
   let personalSettings = personalRuntime?.meta?.settings || meta?.settings || {usdRateSource:'blue',language:'es',ratesCache:{}};
   meta = createMeta();
+  meta.categories = (cats.data || []).map(toAppCategory);
+  if(!meta.categories.length) meta.categories = JSON.parse(JSON.stringify(DEF));
   meta.settings = JSON.parse(JSON.stringify(personalSettings));
   meta.settings.ratesCache = {};
   (rates.data || []).forEach(r=>meta.settings.ratesCache[r.currency]={rateToARS:Number(r.rate_to_ars)||0,provider:r.provider||'manual',fetchedAt:r.fetched_at,updatedAt:r.updated_at});
   transactions = (txs.data || []).map(toAppTx);
   meta.availableMonths = [...new Set(transactions.map(monthKey).filter(Boolean))].sort();
-  const loadedCategories = (cats.data || []).map(toAppCategory).filter(c=>isUuid(c.id));
-  meta.categories = loadedCategories;
-  if(!meta.categories.length){
-    await ensureSharedDefaultCategories();
-  }
-  await refreshSharedCategories();
-  fillCats('f-cat', txType);
 }
 
 async function sharedSaveMeta(){
@@ -341,23 +113,21 @@ async function switchAppMode(mode){
   if(!isSupabaseConfigured()) return toast('Supabase no está configurado');
   try{
     personalRuntime = {...personalRuntime, meta, transactions:[...transactions]};
-    appMode = 'shared';
-    rememberMode('shared');
     await sharedLoadProfile();
     if(!currentHousehold){
       await createSharedHousehold(true);
       if(!currentHousehold) return;
     }
     await sharedLoadData();
-    await refreshSharedCategories();
-    syncSharedCategoryDropdowns();
+    appMode = 'shared';
+    rememberMode('shared');
     renderAll();
   }catch(e){sharedToastError(e)}
 }
 
 async function createSharedHousehold(autoSwitch=false){
   if(!isSupabaseConfigured()) return toast('Supabase no está configurado');
-  let name = prompt(t('sharedBudget'), t('sharedBudget'));
+  let name = prompt('Nombre del presupuesto compartido','Presupuesto compartido');
   if(!name) return;
   let client = sharedClient();
   try{
@@ -376,30 +146,26 @@ async function createSharedHousehold(autoSwitch=false){
     await createSharedInvite();
     await sharedLoadHouseholdMeta();
     if(autoSwitch){
+      await sharedLoadData();
       appMode = 'shared';
       rememberMode('shared');
-      await sharedLoadData();
-      await refreshSharedCategories();
-      syncSharedCategoryDropdowns();
     }
     renderAll();
-    toast('sharedCreated');
+    toast('Presupuesto compartido creado');
   }catch(e){sharedToastError(e,'Shared setup error')}
 }
 
 async function ensureSharedDefaultCategories(){
   let client = sharedClient();
-  if(!client) throw new Error('No Supabase client for default categories');
   if(!currentHousehold?.id) throw new Error('No household id for default categories');
-  let existing = await client.from('shared_categories').select('*').eq('household_id', currentHousehold.id).order('created_at');
+  let existing = await client.from('shared_categories').select('id').eq('household_id', currentHousehold.id).limit(1);
   console.log('shared default categories existing:', existing);
   if(existing.error) throw existing.error;
-  if(existing.data?.length) return existing.data;
+  if(existing.data?.length) return;
   let rows = DEF.map(c=>catToDb(c));
-  let r = await client.from('shared_categories').insert(rows).select('*');
+  let r = await client.from('shared_categories').insert(rows);
   console.log('shared default categories insert:', r);
   if(r.error) throw r.error;
-  return r.data || [];
 }
 
 function inviteCode(){return Math.random().toString(36).slice(2,8).toUpperCase()+Math.random().toString(36).slice(2,6).toUpperCase()}
@@ -420,7 +186,7 @@ async function createSharedInvite(){
 
 async function joinSharedHousehold(){
   let code = document.getElementById('shared-invite-input')?.value.trim();
-  if(!code) return toast('sharedCodeRequired');
+  if(!code) return toast('Código requerido');
   let client = sharedClient();
   try{
     await sharedEnsureAuth();
@@ -429,19 +195,17 @@ async function joinSharedHousehold(){
     if(r.error) throw r.error;
     if(!r.data) throw new Error('join_household_by_code returned empty household id');
     rememberActiveHousehold(r.data);
-    appMode = 'shared';
-    rememberMode('shared');
     await sharedLoadProfile(r.data);
     await sharedLoadData();
-    await refreshSharedCategories();
-    syncSharedCategoryDropdowns();
+    appMode = 'shared';
+    rememberMode('shared');
     renderAll();
-    toast('sharedJoined');
+    toast('Unido al presupuesto compartido');
   }catch(e){sharedToastError(e,'Join invite error')}
 }
 
 async function leaveSharedHousehold(){
-  if(!currentHousehold || !confirm(t('sharedLeaveConfirm'))) return;
+  if(!currentHousehold || !confirm('¿Salir del presupuesto compartido?')) return;
   let client = sharedClient();
   try{
     let r = await client.from('household_members').delete().eq('household_id', currentHousehold.id).eq('user_id', sharedUser.id);
@@ -453,7 +217,7 @@ async function leaveSharedHousehold(){
 
 async function copySharedInvite(){
   if(!sharedInviteCode && currentHousehold){try{await createSharedInvite();renderAll()}catch(e){return sharedToastError(e,'Invite error')}}
-  try{await navigator.clipboard.writeText(sharedInviteCode);toast('sharedCodeCopied')}catch{prompt(t('sharedInviteCode'), sharedInviteCode)}
+  try{await navigator.clipboard.writeText(sharedInviteCode);toast('Código copiado')}catch{prompt('Código de invitación', sharedInviteCode)}
 }
 
 function renderSharedAccess(){
@@ -465,25 +229,21 @@ function renderSharedAccess(){
     head.insertAdjacentHTML('afterend','<div class="card" id="shared-card"></div>');
     card = document.getElementById('shared-card');
   }
-  let mode = '<div class="type-row shared-mode-switch" style="margin-bottom:10px"><button class="type-pill '+(!isSharedMode()?'active mode-active':'')+'" onclick="switchAppMode(\'personal\')">'+escapeHTML(t('sharedPersonal'))+(!isSharedMode()?'<span class="mode-status">'+escapeHTML(t('sharedNowActive'))+'</span>':'')+'</button><button class="type-pill '+(isSharedMode()?'active mode-active':'')+'" onclick="switchAppMode(\'shared\')">'+escapeHTML(t('sharedShared'))+(isSharedMode()?'<span class="mode-status">'+escapeHTML(t('sharedNowActive'))+'</span>':'')+'</button></div>';
   if(!isSupabaseConfigured()){
-    card.innerHTML='<div class="section-label" style="margin-top:0">'+escapeHTML(t('sharedBudget'))+'</div><div class="note">Supabase no está configurado</div><div class="actions-row"><button class="btn ghost" disabled>'+escapeHTML(t('sharedPersonal'))+'</button><button class="btn ghost" disabled>'+escapeHTML(t('sharedShared'))+'</button></div>';
+    card.innerHTML='<div class="section-label" style="margin-top:0">Presupuesto compartido</div><div class="note">Supabase no está configurado</div><div class="actions-row"><button class="btn ghost" disabled>Personal</button><button class="btn ghost" disabled>Compartido</button></div>';
     return;
   }
+  let mode = '<div class="type-row" style="margin-bottom:10px"><button class="type-pill '+(!isSharedMode()?'active':'')+'" onclick="switchAppMode(\'personal\')">Personal</button><button class="type-pill '+(isSharedMode()?'active':'')+'" onclick="switchAppMode(\'shared\')">Compartido</button></div>';
   if(!currentHousehold){
-    card.innerHTML='<div class="section-label" style="margin-top:0">'+escapeHTML(t('sharedBudget'))+'</div>'+mode+'<button class="btn full" onclick="createSharedHousehold()">'+escapeHTML(t('sharedCreate'))+'</button><div class="form-row" style="margin-top:10px"><div class="field"><label>'+escapeHTML(t('sharedInviteCode'))+'</label><input id="shared-invite-input" placeholder="ABC123"></div><button class="btn" onclick="joinSharedHousehold()" style="align-self:end">'+escapeHTML(t('sharedJoin'))+'</button></div>';
+    card.innerHTML='<div class="section-label" style="margin-top:0">Presupuesto compartido</div>'+mode+'<button class="btn full" onclick="createSharedHousehold()">Crear presupuesto compartido</button><div class="form-row" style="margin-top:10px"><div class="field"><label>Código de invitación</label><input id="shared-invite-input" placeholder="ABC123"></div><button class="btn" onclick="joinSharedHousehold()" style="align-self:end">Unirse</button></div>';
     return;
   }
-  let members = sharedMembers.map(m=>escapeHTML(m.app_users?.first_name || m.app_users?.username || String(m.app_users?.tg_id || t('sharedUser')))+' · '+escapeHTML(t(m.role==='owner'?'sharedOwner':'sharedMember'))).join('<br>') || '—';
-  card.innerHTML='<div class="section-label" style="margin-top:0">'+escapeHTML(t('sharedBudget'))+'</div>'+mode+'<div class="rate-grid"><div class="rate-pill"><span>'+escapeHTML(t('sharedHousehold'))+'</span><b>'+escapeHTML(currentHousehold.name)+'</b></div><div class="rate-pill"><span>'+escapeHTML(t('sharedInviteCode'))+'</span><b>'+escapeHTML(sharedInviteCode||'—')+'</b></div></div><div class="note">'+members+'</div><div class="actions-row"><button class="btn ghost" onclick="copySharedInvite()">'+escapeHTML(t('sharedCopyCode'))+'</button><button class="btn ghost" onclick="copyPersonalToShared()">'+escapeHTML(t('sharedCopyData'))+'</button><button class="btn ghost" onclick="refreshSharedBudget()">'+escapeHTML(t('sharedRefresh'))+'</button><button class="btn danger" onclick="leaveSharedHousehold()">'+escapeHTML(t('sharedLeave'))+'</button></div><div class="note shared-updated" id="shared-updated">'+escapeHTML(sharedUpdatedText())+'</div>';
+  let members = sharedMembers.map(m=>escapeHTML(m.app_users?.first_name || m.app_users?.username || String(m.app_users?.tg_id || 'Usuario'))+' · '+escapeHTML(m.role)).join('<br>') || '—';
+  card.innerHTML='<div class="section-label" style="margin-top:0">Presupuesto compartido</div>'+mode+'<div class="rate-grid"><div class="rate-pill"><span>Household</span><b>'+escapeHTML(currentHousehold.name)+'</b></div><div class="rate-pill"><span>Invite code</span><b>'+escapeHTML(sharedInviteCode||'—')+'</b></div></div><div class="note">'+members+'</div><div class="actions-row"><button class="btn ghost" onclick="copySharedInvite()">Copiar código</button><button class="btn ghost" onclick="copyPersonalToShared()">Copiar mis datos al compartido</button><button class="btn danger" onclick="leaveSharedHousehold()">Salir del presupuesto compartido</button></div>';
 }
 
 async function sharedAddTx(){
-  const select = document.getElementById('f-cat');
-  const selectedCatId = select?.value || '';
-  const selectedText = select?.options?.[select.selectedIndex]?.textContent || '';
   let t = formTx('f',txType); if(!t) return;
-  if(!await ensureValidSharedTxCategory(t, selectedCatId, selectedText, txType)) return;
   let client = sharedClient();
   try{
     let r = await client.from('shared_transactions').insert({...txToDb(t),created_by:sharedUser.id}).select('*').single();
@@ -509,11 +269,7 @@ async function sharedDeleteTx(id){
 async function sharedSaveEdit(){
   let i = transactions.findIndex(t=>sharedTxId(t.id)===sharedTxId(editId));
   if(i<0) return;
-  const select = document.getElementById('e-cat');
-  const selectedCatId = select?.value || '';
-  const selectedText = select?.options?.[select.selectedIndex]?.textContent || '';
   let t = formTx('e',editType,{id:transactions[i].id}); if(!t) return;
-  if(!await ensureValidSharedTxCategory(t, selectedCatId, selectedText, editType)) return;
   let client = sharedClient();
   try{
     let r = await client.from('shared_transactions').update(txToDb(t)).eq('id', sharedTxId(t.id)).eq('household_id', currentHousehold.id).select('*').single();
@@ -526,17 +282,7 @@ async function sharedCreateCategory(){
   let emoji=document.getElementById('new-cat-emoji').value.trim()||'📦',name=document.getElementById('new-cat-name').value.trim(),type=document.getElementById('new-cat-type').value,budget=Number(document.getElementById('new-cat-budget').value)||0;
   if(!name)return toast('Ingresa un nombre');
   let client=sharedClient();
-  try{
-    let r=await client.from('shared_categories').insert({household_id:currentHousehold.id,emoji,name,type,budget:Math.max(0,budget),archived:false}).select('*').single();
-    if(r.error)throw r.error;
-    let inserted=toAppCategory(r.data);
-    await refreshSharedCategories(inserted.id);
-    document.getElementById('new-cat-emoji').value='';document.getElementById('new-cat-name').value='';document.getElementById('new-cat-budget').value='';
-    let f=document.getElementById('f-cat');if(f)f.value=inserted.id;
-    renderAll();
-    f=document.getElementById('f-cat');if(f)f.value=inserted.id;
-    toast('Categoría creada')
-  }catch(e){sharedToastError(e)}
+  try{let r=await client.from('shared_categories').insert({household_id:currentHousehold.id,emoji,name,type,budget:Math.max(0,budget),archived:false}).select('*').single();if(r.error)throw r.error;meta.categories.push(toAppCategory(r.data));document.getElementById('new-cat-emoji').value='';document.getElementById('new-cat-name').value='';document.getElementById('new-cat-budget').value='';renderAll();toast('Categoría creada')}catch(e){sharedToastError(e)}
 }
 
 async function sharedSaveCategory(id){
@@ -555,7 +301,7 @@ async function sharedRestoreCategory(id){let client=sharedClient();try{let r=awa
 async function sharedSaveBudgetLimit(id){let v=Number(document.getElementById('budget-'+id).value),c=cat(id);c.budget=Number.isFinite(v)&&v>0?v:0;let client=sharedClient();try{let r=await client.from('shared_categories').update({budget:c.budget,updated_at:new Date().toISOString()}).eq('id',id).eq('household_id',currentHousehold.id).select('*').single();if(r.error)throw r.error;Object.assign(c,toAppCategory(r.data));renderAll();toast('Límite guardado')}catch(e){sharedToastError(e)}}
 
 async function copyPersonalToShared(){
-  if(!currentHousehold || !confirm(t('sharedCopyConfirm'))) return;
+  if(!currentHousehold || !confirm('¿Copiar tus datos personales al presupuesto compartido?')) return;
   let client=sharedClient();
   try{
     let data = await personalRuntime.exports.exportData();
@@ -572,11 +318,11 @@ async function copyPersonalToShared(){
     for(let pt of data.transactions || []){
       let sig=[pt.type,pt.desc,pt.date,pt.amountOriginal,pt.currency,pt.rateToARS,(data.categories||[]).find(c=>c.id===pt.catId)?.name||''].join('|');
       if(existingSig.has(sig)) continue;
-      rows.push({household_id:currentHousehold.id,created_by:sharedUser.id,type:pt.type,desc:pt.desc,category_id:catMap[pt.catId]||sharedFallbackCategoryId(pt.type),date:pt.date,amount_original:pt.amountOriginal,currency:pt.currency,rate_to_ars:pt.rateToARS,amount_ars:pt.amountARS,rate_provider:pt.rateProvider,rate_fetched_at:pt.rateFetchedAt});
+      rows.push({household_id:currentHousehold.id,created_by:sharedUser.id,type:pt.type,desc:pt.desc,category_id:catMap[pt.catId]||null,date:pt.date,amount_original:pt.amountOriginal,currency:pt.currency,rate_to_ars:pt.rateToARS,amount_ars:pt.amountARS,rate_provider:pt.rateProvider,rate_fetched_at:pt.rateFetchedAt});
     }
     let copied=0;
     if(rows.length){let r=await client.from('shared_transactions').insert(rows).select('*');if(r.error)throw r.error;copied=r.data.length;transactions.unshift(...r.data.map(toAppTx));}
-    meta.availableMonths=[...new Set(transactions.map(monthKey).filter(Boolean))].sort();renderAll();toast('sharedCopyDone');
+    meta.availableMonths=[...new Set(transactions.map(monthKey).filter(Boolean))].sort();renderAll();toast('Copiadas: '+copied);
   }catch(e){sharedToastError(e)}
 }
 
@@ -592,7 +338,7 @@ async function sharedImportData(d){
   let insertedCats=[],catMap={};
   if(cats.length){let cr=await client.from('shared_categories').insert(cats.map(c=>({household_id:currentHousehold.id,emoji:c.emoji,name:c.name,type:c.type,budget:c.budget,archived:c.archived}))).select('*');if(cr.error)throw cr.error;insertedCats=cr.data.map(toAppCategory);cats.forEach((c,i)=>catMap[c.id]=insertedCats[i].id)}
   let insertedTx=[];
-  if(txs.length){let tr=await client.from('shared_transactions').insert(txs.map(t=>({household_id:currentHousehold.id,created_by:sharedUser.id,type:t.type,desc:t.desc,category_id:catMap[t.catId]||sharedFallbackCategoryId(t.type),date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}))).select('*');if(tr.error)throw tr.error;insertedTx=tr.data.map(toAppTx)}
+  if(txs.length){let tr=await client.from('shared_transactions').insert(txs.map(t=>({household_id:currentHousehold.id,created_by:sharedUser.id,type:t.type,desc:t.desc,category_id:catMap[t.catId]||null,date:t.date,amount_original:t.amountOriginal,currency:t.currency,rate_to_ars:t.rateToARS,amount_ars:t.amountARS,rate_provider:t.rateProvider,rate_fetched_at:t.rateFetchedAt}))).select('*');if(tr.error)throw tr.error;insertedTx=tr.data.map(toAppTx)}
   meta.categories=insertedCats;transactions=insertedTx;meta.availableMonths=[...new Set(transactions.map(monthKey).filter(Boolean))].sort();
   let rates=d.ratesCache||d.settings?.ratesCache||{};meta.settings.ratesCache=rates;await sharedSaveMeta();renderAll();toast('Importación lista');
 }
@@ -600,10 +346,8 @@ async function sharedImportData(d){
 function installSharedHooks(){
   if(sharedHooksInstalled) return; sharedHooksInstalled = true;
   personalRuntime = personalRuntime || {};
-  extendSharedI18N();
-  personalRuntime.addTx=window.addTx; personalRuntime.txHTML=window.txHTML; personalRuntime.delTx=window.delTx; personalRuntime.saveEdit=window.saveEdit; personalRuntime.writeMeta=window.writeMeta; personalRuntime.createCategory=window.createCategory; personalRuntime.saveCategory=window.saveCategory; personalRuntime.archiveOrDeleteCategory=window.archiveOrDeleteCategory; personalRuntime.restoreCategory=window.restoreCategory; personalRuntime.saveBudgetLimit=window.saveBudgetLimit; personalRuntime.renderAll=window.renderAll; personalRuntime.exportData=window.exportData; personalRuntime.importJSONFile=window.importJSONFile; personalRuntime.exports={exportData:window.exportData};
+  personalRuntime.addTx=window.addTx; personalRuntime.delTx=window.delTx; personalRuntime.saveEdit=window.saveEdit; personalRuntime.writeMeta=window.writeMeta; personalRuntime.createCategory=window.createCategory; personalRuntime.saveCategory=window.saveCategory; personalRuntime.archiveOrDeleteCategory=window.archiveOrDeleteCategory; personalRuntime.restoreCategory=window.restoreCategory; personalRuntime.saveBudgetLimit=window.saveBudgetLimit; personalRuntime.renderAll=window.renderAll; personalRuntime.exportData=window.exportData; personalRuntime.importJSONFile=window.importJSONFile; personalRuntime.exports={exportData:window.exportData};
   window.writeMeta=async function(touch=true){return isSharedMode()?await sharedSaveMeta():await personalRuntime.writeMeta(touch)};
-  window.txHTML=function(tx,a){return sharedTxHTML(tx,a)};
   window.addTx=async function(){return isSharedMode()?await sharedAddTx():await personalRuntime.addTx()};
   window.delTx=async function(id){return isSharedMode()?await sharedDeleteTx(id):await personalRuntime.delTx(id)};
   window.saveEdit=async function(){return isSharedMode()?await sharedSaveEdit():await personalRuntime.saveEdit()};
@@ -614,5 +358,5 @@ function installSharedHooks(){
   window.saveBudgetLimit=async function(id){return isSharedMode()?await sharedSaveBudgetLimit(id):await personalRuntime.saveBudgetLimit(id)};
   window.exportData=async function(){return isSharedMode()?await sharedExportData():await personalRuntime.exportData()};
   window.importJSONFile=function(e){if(!isSharedMode())return personalRuntime.importJSONFile(e);let f=e.target.files?.[0];e.target.value='';if(!f)return;if(!confirm(t('confirmImport')))return;let rd=new FileReader();rd.onload=async()=>{try{await sharedImportData(JSON.parse(rd.result))}catch(err){sharedToastError(err)}};rd.readAsText(f)};
-  window.renderAll=function(){personalRuntime.renderAll();if(isSharedMode())syncSharedCategoryDropdowns();renderSharedAccess();renderModeIndicators();renderModeEmptyStates()};
+  window.renderAll=function(){personalRuntime.renderAll();renderSharedAccess()};
 }

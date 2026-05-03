@@ -64,9 +64,6 @@ async function ensureSupabaseAuth(){
     throw new Error("Telegram initData is empty. Open the app inside Telegram Mini App.");
   }
 
-  let {data:{session:currentSession}} = await client.auth.getSession();
-  console.log("Supabase auth uid:", currentSession?.user?.id || null);
-
   const res = await client.functions.invoke("tg-auth", {
     body: { initData }
   });
@@ -75,8 +72,5 @@ async function ensureSupabaseAuth(){
     console.error('tg-auth invoke error:', message, res.error);
     throw new Error(message);
   }
-  console.log("tg-auth app_user id:", res.data?.app_user?.id || null);
-  console.log("tg-auth app_user tg_id:", res.data?.app_user?.tg_id || res.data?.tg_id || null);
-  console.log("tg-auth session linked:", Boolean(res.data?.session_linked));
   return res.data?.app_user || null;
 }
