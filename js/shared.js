@@ -39,7 +39,7 @@ async function sharedLoadProfile(){
 async function sharedLoadHouseholdMeta(){
   let client = sharedClient();
   if(!client || !currentHousehold) return;
-  let members = await client.from('household_members').select('role, app_users(id,telegram_id,first_name,username)').eq('household_id', currentHousehold.id).order('created_at');
+  let members = await client.from('household_members').select('role, app_users(id,tg_id,first_name,username)').eq('household_id', currentHousehold.id).order('created_at');
   if(!members.error) sharedMembers = members.data || [];
   let invites = await client.from('household_invites').select('code,expires_at,used_at').eq('household_id', currentHousehold.id).is('used_at', null).order('created_at', {ascending:false}).limit(1);
   if(!invites.error) sharedInviteCode = invites.data?.[0]?.code || '';
@@ -193,7 +193,7 @@ function renderSharedAccess(){
     card.innerHTML='<div class="section-label" style="margin-top:0">Presupuesto compartido</div>'+mode+'<button class="btn full" onclick="createSharedHousehold()">Crear presupuesto compartido</button><div class="form-row" style="margin-top:10px"><div class="field"><label>Código de invitación</label><input id="shared-invite-input" placeholder="ABC123"></div><button class="btn" onclick="joinSharedHousehold()" style="align-self:end">Unirse</button></div>';
     return;
   }
-  let members = sharedMembers.map(m=>escapeHTML(m.app_users?.first_name || m.app_users?.username || String(m.app_users?.telegram_id || 'Usuario'))+' · '+escapeHTML(m.role)).join('<br>') || '—';
+  let members = sharedMembers.map(m=>escapeHTML(m.app_users?.first_name || m.app_users?.username || String(m.app_users?.tg_id || 'Usuario'))+' · '+escapeHTML(m.role)).join('<br>') || '—';
   card.innerHTML='<div class="section-label" style="margin-top:0">Presupuesto compartido</div>'+mode+'<div class="rate-grid"><div class="rate-pill"><span>Household</span><b>'+escapeHTML(currentHousehold.name)+'</b></div><div class="rate-pill"><span>Invite code</span><b>'+escapeHTML(sharedInviteCode||'—')+'</b></div></div><div class="note">'+members+'</div><div class="actions-row"><button class="btn ghost" onclick="copySharedInvite()">Copiar código</button><button class="btn ghost" onclick="copyPersonalToShared()">Copiar mis datos al compartido</button><button class="btn danger" onclick="leaveSharedHousehold()">Salir del presupuesto compartido</button></div>';
 }
 
