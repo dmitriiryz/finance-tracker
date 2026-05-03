@@ -2,7 +2,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.app_users (
   id uuid primary key references auth.users(id) on delete cascade,
-  telegram_id bigint unique not null,
+  tg_id bigint unique not null,
   first_name text,
   username text,
   created_at timestamptz default now(),
